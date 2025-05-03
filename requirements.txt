@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+openai
+python-dotenv
+requests
+loguru
+typer
+flask
+pydantic-settings
+bs4
+gTTS
+SpeechRecognition
+pythainlp
+pyaudio
+python-crfsuite
+
