@@ -84,7 +84,7 @@ class VoiceListener:
         keywords = COMMAND_WORDS.get(command_type, [])
         return any(keyword in text for keyword in keywords)
 
-    def listen(self, timeout=5, phrase_time_limit=15):
+    def listen(self, timeout=3, phrase_time_limit=15):
         with self.listen_mic as source:
             #self.recognizer.adjust_for_ambient_noise(source, duration=0.7)
             self.recognizer.pause_threshold = 1

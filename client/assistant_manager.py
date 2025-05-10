@@ -58,14 +58,15 @@ class AssistantManager:
                 self.last_interaction_time = time.time()
                 time.sleep(1)
                 continue            
-
+            
             if not self.audio_manager.is_sound_playing:
                 #logger.info("Start Listening")
+                
                 user_voice = self.voice_listener.listen()
                 
                 if not user_voice:
                     continue
-                
+                self.tracker.mark("user_said")                
                 logger.info(f"🗣️ User said: {user_voice}")
                 self.last_interaction_time = time.time()
 
@@ -74,11 +75,15 @@ class AssistantManager:
                 #if the user_voice is command then skip - not send to chatGPT
                 if response:
                     continue
+                self.tracker.mark("sending to chatgpt")
                 logger.info(f"Sending to ChatGPT..text={user_voice}")                      
                 answer = self.gpt_client_proxy.ask(user_voice)     
                 logger.info(f"ChatGPT={answer}")                         
-
+                
+                self.tracker.mark("return from server - start speaking")
                 self.audio_manager.speak(answer)
+                self.tracker.mark("return from speaking")
+                self.tracker.report()
                 self.last_interaction_time = time.time()
 
         logger.info("👋 Program exiting... Goodbye!")

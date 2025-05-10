@@ -1,166 +1,130 @@
-import threading
-import time
 import os
 from gtts import gTTS
 import pygame
 import re
-from pythainlp.tokenize import sent_tokenize
 import uuid
 import platform
+import threading
+import time
+from queue import Queue, Empty
+from mutagen.mp3 import MP3
 from logger_config import get_logger
+from latency_logger import LatencyLogger
+from pythainlp.tokenize import sent_tokenize, word_tokenize
 
 logger = get_logger(__name__)
 
 class ProgressiveTTSManager:
-    def __init__(self,assistant_manager):
+    def __init__(self, assistant_manager):
         logger.info("ProgressiveTTSManager initialized")
         pygame.mixer.init()
-
         self.assistant_manager = assistant_manager
-        self.chunks = []
-        self.chunk_files = []
-        self.lock = threading.Lock()
+        self.chunk_queue = Queue()
         self.generating_done = False
         self.stop_flag = threading.Event()
-        
-    def clean_text_for_gtts(self,text):
-        # 1. รักษาจุด (.) ระหว่างตัวเลข เช่น 2.14
+
+    def clean_text_for_gtts(self, text):
         text = re.sub(r"(?<=\d)\.(?=\d)", "DOTPLACEHOLDER", text)
-        
-        # 2. รักษาจุด (.) ติดกับตัวอักษร เช่น U.S.A.
         text = re.sub(r"(?<=\w)\.(?=\w)", "DOTPLACEHOLDER", text)
-        
-        # 3. กรองเฉพาะ ก-ฮ, a-z, A-Z, 0-9, เว้นวรรค, เครื่องหมาย %, :
-        text = re.sub(r"[^ก-๙a-zA-Z0-9\s%:-]", "", text)
-        # 4. คืน DOT กลับ
+        text = re.sub(r"[^\u0E00-\u0E7Fa-zA-Z0-9\s%:-]", "", text)
         text = text.replace("DOTPLACEHOLDER", ".")
+        return re.sub(r"\s+", " ", text).strip()
 
-        # 5. ลบช่องว่างซ้ำ
-        text = re.sub(r"\s+", " ", text).strip()
-
-        return text
-    
-
-    def smart_split_text(self, text, max_len=60):
-
-        text = text.replace("\n", ". \n")  # add a sentence-like marker
-
-        sentences = sent_tokenize(text)
+    def thai_chunks(self, text, initial_limit=5, grow_rate=2):
+        words = word_tokenize(text, engine="newmm")
         chunks = []
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            if len(sentence) <= max_len:
-                chunks.append(sentence) 
-            else:
-                # ตัดเพิ่มตามความยาว
-                words = sentence.split()
-                temp = ""
-                for word in words:
-                    if len(temp + " " + word) > max_len:
-                        if temp.strip():
-                            chunks.append(temp.strip())
-                        temp = word
-                    else:
-                        temp += " " + word
-                if temp.strip():
-                    chunks.append(temp.strip())
+        start = 0
+        limit = initial_limit
 
+        while start < len(words):
+            end = int(start + limit)
+            chunk = ''.join(words[start:end])
+            chunks.append(chunk)
+            start = end
+            limit *= grow_rate
 
         return chunks
 
-    def generate_chunks(self):     
-        try: 
+    def generate_chunks(self):
+        try:
             logger.debug("Enter generate_chunks")
-            for idx, chunk in enumerate(self.chunks):
+            for chunk in self.chunks:
                 if self.stop_flag.is_set():
-                    break  # 🛑 ถ้ามีสั่งหยุด จะไม่ generate ต่อ            
+                    break
                 if not chunk.strip():
-                    continue  # ✅ ข้าม chunk ว่าง
+                    continue
+
                 is_macos = platform.system() == "Darwin"
                 temp_dir = "/tmp" if is_macos else "/dev/shm"
-
                 filename = f"{temp_dir}/temp_{uuid.uuid4()}.mp3"
-                
-                cleaned_text = ( self.clean_text_for_gtts(chunk) or "").strip()
-                
+
+                cleaned_text = self.clean_text_for_gtts(chunk)
                 if not cleaned_text:
-                    logger.error("❌ Input text is empty. Cannot generate TTS. input = %s",chunk)    
-                    continue                        
-                #print("cleaned_text=",cleaned_text)
+                    logger.error("? Empty text chunk")
+                    continue
+
                 tts = gTTS(text=cleaned_text, lang="th")
                 tts.save(filename)
+                audio = MP3(filename)
+                logger.debug(f"file={filename} saved, duration={audio.info.length:.2f}s")
 
-                logger.debug(f"file={filename} has been saved..")
+                self.chunk_queue.put(filename)
 
-                with self.lock:
-                    self.chunk_files.append(filename)
             self.generating_done = True
             logger.info("Exit generate_chunks")
 
-        except AssertionError as e:
-            logger.error(f"❗ gTTS error: {e}")
-        except ValueError as e:
-            logger.error(f"❗ TTS skipped: {e}")
         except Exception as e:
-            logger.error(f"❌ Unexpected error during TTS: {e}")
-        
+            logger.error(f"? Error during chunk generation: {e}")
 
     def play_chunks(self):
-        idx = 0
-        logger.info("🔊 Playing sound")
+        logger.info("? Start playing chunks")
         while True:
             if self.stop_flag.is_set():
-                logger.info("🛑 Stop signal received during playback.")
-                break  # 🛑 หยุดเล่นทันที
+                logger.info("? Stop flag received during playback")
+                break
 
-            with self.lock:
-                if idx < len(self.chunk_files):
-                    filename = self.chunk_files[idx]
-                    idx += 1
-                else:
-                    if self.generating_done:
-                        break
-                    time.sleep(0.1)
-                    continue
+            try:
+                filename = self.chunk_queue.get(timeout=1.0)
+            except Empty:
+                if self.generating_done:
+                    break
+                continue
 
-            #print(f"🔊 Playing {filename}")
             sound = pygame.mixer.Sound(filename)
-            logger.debug(f"++++file={filename} is playing..")
             channel = sound.play()
+            logger.debug(f"? Playing {filename}")
 
             while channel.get_busy():
                 if self.stop_flag.is_set():
                     channel.stop()
-                    logger.info("🛑 Stopped current sound.")
+                    logger.info("? Playback interrupted")
                     break
                 self.assistant_manager.last_interaction_time = time.time()
                 time.sleep(0.1)
 
-     
-    def speak(self, text):
-        logger.info("Enter speak")
-        self.stop_flag.clear()
-        self.chunks = self.smart_split_text(text, max_len=50)
-        self.chunk_files = []
-        self.generating_done = False
-
-        threading.Thread(target=self.generate_chunks, daemon=True).start()        
-        self.play_chunks()
-        self.cleanup()
-
-    def stop(self):
-        """ 🛑 สั่งหยุดการเล่น/สร้างเสียง """
-        logger.info("🛑 Stop requested.")
-        self.stop_flag.set()
-
-    def cleanup(self):
-        """ ลบไฟล์หลังจากเล่นจบ """
-        for file in self.chunk_files:
             try:
-                os.remove(file)
+                os.remove(filename)
             except:
                 pass
-        self.chunk_files.clear()
-        logger.info("🧹 Cleaned up temp audio files.")
+
+    def speak(self, text):
+        logger.info("Enter speak")
+        self.tracker = LatencyLogger()
+        self.tracker.mark("tts - enter speak")
+
+        self.stop_flag.clear()
+        self.chunks = self.thai_chunks(text, initial_limit=3, grow_rate=1.5)
+        self.generating_done = False
+
+        self.tracker.mark("tts - start generate_chunk")
+        threading.Thread(target=self.generate_chunks, daemon=True).start()
+
+        self.tracker.mark("tts - start play_chunks")
+        self.play_chunks()
+        self.tracker.mark("tts - end play_chunks")
+        self.tracker.report()
+
+    def stop(self):
+        logger.info("? Stop requested")
+        self.stop_flag.set()
+
