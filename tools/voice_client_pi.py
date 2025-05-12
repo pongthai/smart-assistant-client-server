@@ -3,27 +3,46 @@ import scipy.io.wavfile as wav
 import requests
 import tempfile
 import os
+import random
 
 SAMPLE_RATE = 16000
-DURATION = 5  # วินาที
+DURATION = 6  # วินาทีต่อรอบ
 SERVER_URL = "http://<MAC-IP>:8000"  # เปลี่ยน <MAC-IP> เป็น IP จริงของ Mac Mini
 
-def record_audio(path):
-    print(f"🎙️ บันทึกเสียง {DURATION} วินาที...")
+# ตัวอย่างประโยคภาษาไทย
+SAMPLE_SENTENCES = [
+    "สวัสดีจ้า วันนี้อากาศดีมากเลยนะ",
+    "กำลังทดสอบระบบระบุเสียงอัจฉริยะอยู่นะ",    
+    "ตอนนี้กำลังนั่งอยู่ในห้องทำงานนะ มีอะไรก็เรียกนะ",
+    "ตอนนี้กำลังยุ่งอยู่ อย่าเพิ่งรบกวนนะ"
+]
+
+def record_audio(path, hint=None):
+    print(f"\n🎙️ บันทึกเสียง {DURATION} วินาที...")
+    if hint:
+        print(f"🗣️ พูดประโยคนี้: \033[92m{hint}\033[0m")
     audio = sd.rec(int(DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1, dtype='int16')
     sd.wait()
     wav.write(path, SAMPLE_RATE, audio)
-    print(f"✅ บันทึกเสร็จ: {path}")
+    print(f"✅ เสร็จสิ้น: {path}")
 
 def create_profile(name):
-    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-        record_audio(tmp.name)
-        with open(tmp.name, 'rb') as f:
-            files = {'audio': f}
-            data = {'name': name}
-            res = requests.post(f"{SERVER_URL}/create-profile", files=files, data=data)
+    temp_files = []
+    try:
+        for i in range(2):
+            hint = random.choice(SAMPLE_SENTENCES)
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                record_audio(tmp.name, hint=hint)
+                temp_files.append(('audio', open(tmp.name, 'rb')))
+
+        data = {'name': name}
+        res = requests.post(f"{SERVER_URL}/create-profile", files=temp_files, data=data)
         print("📦 สร้างโปรไฟล์:", res.json())
-    os.remove(tmp.name)
+
+    finally:
+        for _, f in temp_files:
+            f.close()
+            os.remove(f.name)
 
 def identify_speaker():
     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
