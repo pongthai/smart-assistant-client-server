@@ -28,8 +28,7 @@ class GPTClient:
 
         self.chat_manager = ChatManager(SYSTEM_TONE)
         self.memory_manager = MemoryManager()
-        self.search_manager = SearchManager()
-        self.tracker = LatencyLogger()
+        self.search_manager = SearchManager()        
 
     def get_conversation_history(self, limit=5):
         memories = self.memory_manager.get_recent_memories(limit=limit)
@@ -47,6 +46,7 @@ class GPTClient:
         
         try:
             # Analyze need (Web search / Memory / History)
+            self.tracker = LatencyLogger()
             self.tracker.mark("analyze_question_all_in_one - start")
             analysis = self.chat_manager.analyze_question_all_in_one(
             current_question=user_voice,
