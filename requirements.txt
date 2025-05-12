@@ -13,4 +13,6 @@ SpeechRecognition
 pythainlp
 pyaudio
 python-crfsuite
-
+resemblyzer
+numpy
+sounddevice
