@@ -16,3 +16,4 @@ python-crfsuite
 resemblyzer
 numpy
 sounddevice
+python-multipart
