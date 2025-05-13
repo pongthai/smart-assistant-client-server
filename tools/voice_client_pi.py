@@ -7,7 +7,7 @@ import random
 
 SAMPLE_RATE = 16000
 DURATION = 6  # วินาทีต่อรอบ
-SERVER_URL = "http://<MAC-IP>:8000"  # เปลี่ยน <MAC-IP> เป็น IP จริงของ Mac Mini
+SERVER_URL = "http://192.168.1.100:8000"  # เปลี่ยน <MAC-IP> เป็น IP จริงของ Mac Mini
 
 # ตัวอย่างประโยคภาษาไทย
 SAMPLE_SENTENCES = [

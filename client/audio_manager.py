@@ -11,10 +11,13 @@ import re
 from gtts import gTTS
 from progressive_tts_manager import ProgressiveTTSManager
 from google.cloud import texttospeech
+from config import GOOGLE_CLOUD_CREDENTIALS_PATH
 
 from logger_config import get_logger
 
 logger = get_logger(__name__)
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH
+
 
 class AudioManager:
     def __init__(self,assistant_manager):
@@ -52,7 +55,7 @@ class AudioManager:
         else:
             return "."  # macOS หรือ fallback → เก็บไว้ใน current folder
         
-    def speak_with_google_tts(self, text_or_ssml, is_ssml=False):
+    def speak(self, text_or_ssml, is_ssml=False):
         try:            
 
             client = texttospeech.TextToSpeechClient()
@@ -65,8 +68,8 @@ class AudioManager:
 
             audio_config = texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.MP3,
-                speaking_rate=1.05,
-                pitch=1.5
+                speaking_rate=0.8,
+                pitch=1.2
             )
 
             response = client.synthesize_speech(
@@ -89,7 +92,7 @@ class AudioManager:
         except Exception as e:
             print(f"❌ Google TTS Error: {e}")
     
-    def speak(self,text):
+    def speak_tts_manager(self,text):
         self.stop_audio()
         self.tts_manager.speak(text)
    
