@@ -4,14 +4,14 @@ import pygame
 import threading
 import time
 import os
-import tempfile
+import requests
 import platform
 import uuid
 import re
 from gtts import gTTS
 from progressive_tts_manager import ProgressiveTTSManager
 from google.cloud import texttospeech
-from config import GOOGLE_CLOUD_CREDENTIALS_PATH
+from config import GOOGLE_CLOUD_CREDENTIALS_PATH, TTS_SERVER_ENDPOINT
 
 from logger_config import get_logger
 
@@ -54,7 +54,31 @@ class AudioManager:
             return "/dev/shm"  # บน Raspberry Pi หรือ Linux ทั่วไป
         else:
             return "."  # macOS หรือ fallback → เก็บไว้ใน current folder
-        
+    
+
+    def speak_from_server(self, text):
+
+        self.stop_audio()
+
+        try:
+            response = requests.post(TTS_SERVER_ENDPOINT, json={"text": text})
+            if response.status_code == 200:
+                base_path = self.get_temp_audio_path()
+                filename = os.path.join(base_path, f"tts_{uuid.uuid4()}.mp3")
+                #temp_filename = f"/tmp/tts_{uuid.uuid4()}.mp3"
+                with open(filename, "wb") as f:
+                    f.write(response.content)
+
+                self.current_audio_file = filename
+                sound = pygame.mixer.Sound(filename)
+                self.current_channel = sound.play()
+                self.is_playing = True
+
+                threading.Thread(target=self._monitor_playback, daemon=True).start()
+        except Exception as e:
+            print(f"❌ Error during server TTS playback: {e}")
+
+
     def speak(self, text_or_ssml, is_ssml=False):
         try:            
 
@@ -145,6 +169,7 @@ class AudioManager:
                     os.remove(filename)
                 except:
                     pass
+
     def stop_audio(self):
         # self.tts_manager.stop()
         # self.is_sound_playing = False

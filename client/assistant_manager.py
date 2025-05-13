@@ -54,7 +54,7 @@ class AssistantManager:
                 self.wake_word_detected.wait()      # ✅ รอ Wake Word
                 self.wake_word_detected.clear()     # ✅ เคลียร์ event สำหรับรอบถัดไป
                 self.conversation_active = True
-                self.audio_manager.speak(HELLO_MSG)
+                self.audio_manager.speak_from_server(HELLO_MSG)
                 self.last_interaction_time = time.time()
                 time.sleep(1)
                 continue            
@@ -81,7 +81,7 @@ class AssistantManager:
                 logger.info(f"ChatGPT={answer}")                         
                 
                 self.tracker.mark("return from server - start speaking")
-                self.audio_manager.speak(answer)
+                self.audio_manager.speak_from_server(answer)
                 self.tracker.mark("return from speaking")
                 self.tracker.report()
                 self.last_interaction_time = time.time()
