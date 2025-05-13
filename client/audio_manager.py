@@ -4,10 +4,14 @@ import pygame
 import threading
 import time
 import os
+import tempfile
+import platform
 import uuid
 import re
 from gtts import gTTS
 from progressive_tts_manager import ProgressiveTTSManager
+from google.cloud import texttospeech
+
 from logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -39,6 +43,51 @@ class AudioManager:
         text = re.sub(r"\s+", " ", text).strip()
 
         return text
+    
+    def get_temp_audio_path(self):
+
+        system = platform.system()
+        if system == "Linux" and os.path.exists("/dev/shm"):
+            return "/dev/shm"  # บน Raspberry Pi หรือ Linux ทั่วไป
+        else:
+            return "."  # macOS หรือ fallback → เก็บไว้ใน current folder
+        
+    def speak_with_google_tts(self, text_or_ssml, is_ssml=False):
+        try:            
+
+            client = texttospeech.TextToSpeechClient()
+            synthesis_input = texttospeech.SynthesisInput(ssml=text_or_ssml) if is_ssml else texttospeech.SynthesisInput(text=text_or_ssml)
+
+            voice = texttospeech.VoiceSelectionParams(
+                language_code="th-TH",
+                ssml_gender=texttospeech.SsmlVoiceGender.FEMALE
+            )
+
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                speaking_rate=1.05,
+                pitch=1.5
+            )
+
+            response = client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice,
+                audio_config=audio_config
+            )
+
+            # 🔽 จุดนี้ใช้ path ตามระบบ
+            base_path = self.get_temp_audio_path()
+            filename = os.path.join(base_path, f"tts_{uuid.uuid4()}.mp3")
+
+            with open(filename, "wb") as out:
+                out.write(response.audio_content)
+
+            self.stop_audio()
+            self.current_audio_file = filename
+            threading.Thread(target=self.play_audio, args=(filename,), daemon=True).start()
+
+        except Exception as e:
+            print(f"❌ Google TTS Error: {e}")
     
     def speak(self,text):
         self.stop_audio()
@@ -73,6 +122,15 @@ class AudioManager:
                 print("🎵 Sound playback finished.")
                 self.is_sound_playing = False
 
+                # ✅ Auto-clean: ลบไฟล์หลังเล่นจบ
+                if self.current_audio_file and os.path.exists(self.current_audio_file):
+                    try:
+                        os.remove(self.current_audio_file)
+                        print(f"🧹 Removed audio file: {self.current_audio_file}")
+                    except Exception as e:
+                        print(f"⚠️ Could not delete audio file: {e}")
+                    self.current_audio_file = None                    
+
             threading.Thread(target=monitor_playback, daemon=True).start()
 
         except Exception as e:
@@ -85,8 +143,20 @@ class AudioManager:
                 except:
                     pass
     def stop_audio(self):
-        self.tts_manager.stop()
-        self.is_sound_playing = False
+        # self.tts_manager.stop()
+        # self.is_sound_playing = False
+
+        if self.current_sound_channel and self.current_sound_channel.get_busy():
+            self.current_sound_channel.stop()
+
+        if self.current_audio_file and os.path.exists(self.current_audio_file):
+            try:
+                os.remove(self.current_audio_file)
+                print(f"🧹 Removed audio file: {self.current_audio_file}")
+            except Exception as e:
+                print(f"⚠️ Could not delete audio file: {e}")
+            self.current_audio_file = None
+            
 
     def stop_audio_org(self):
         if self.current_sound_channel and self.current_sound_channel.get_busy():

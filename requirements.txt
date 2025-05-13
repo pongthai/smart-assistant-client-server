@@ -17,3 +17,5 @@ resemblyzer
 numpy
 sounddevice
 python-multipart
+langdetect
+google-cloud-texttospeech
