@@ -81,7 +81,7 @@ class AssistantManager:
                 logger.info(f"ChatGPT={answer}")                         
                 
                 self.tracker.mark("return from server - start speaking")
-                self.audio_manager.speak_from_server(answer)
+                self.audio_manager.speak_from_server(answer,True)
                 self.tracker.mark("return from speaking")
                 self.tracker.report()
                 self.last_interaction_time = time.time()

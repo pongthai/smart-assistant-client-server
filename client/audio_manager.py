@@ -56,25 +56,30 @@ class AudioManager:
             return "."  # macOS หรือ fallback → เก็บไว้ใน current folder
     
 
-    def speak_from_server(self, text):
+    def speak_from_server(self, text,is_ssml=False):
 
         self.stop_audio()
 
         try:
-            response = requests.post(TTS_SERVER_ENDPOINT, json={"text": text})
-            if response.status_code == 200:
+            response = requests.post(
+                    TTS_SERVER_ENDPOINT, 
+                    json={
+                        "text": text, 
+                        "is_ssml":is_ssml}
+                    )
+            if response.status_code == 200 and response.headers.get("Content-Type") == "audio/mpeg":
                 base_path = self.get_temp_audio_path()
                 filename = os.path.join(base_path, f"tts_{uuid.uuid4()}.mp3")
                 #temp_filename = f"/tmp/tts_{uuid.uuid4()}.mp3"
                 with open(filename, "wb") as f:
                     f.write(response.content)
-
+                
+                self.stop_audio()
                 self.current_audio_file = filename
-                sound = pygame.mixer.Sound(filename)
-                self.current_channel = sound.play()
-                self.is_playing = True
+                threading.Thread(target=self.play_audio, args=(filename,), daemon=True).start()
 
-                threading.Thread(target=self._monitor_playback, daemon=True).start()
+            else:
+                print(f"? Server TTS error: {response.status_code} - {response.text}")
         except Exception as e:
             print(f"❌ Error during server TTS playback: {e}")
 
