@@ -3,6 +3,9 @@ from google.cloud import texttospeech
 import uuid
 import os
 import platform
+from config import GOOGLE_CLOUD_CREDENTIALS_PATH
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH
 
 class TTSManager:
     def __init__(self):
@@ -26,13 +29,12 @@ class TTSManager:
             language_code="th-TH",
             ssml_gender=texttospeech.SsmlVoiceGender.FEMALE
         )
-
         audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=1.05,
-            pitch=1.5
-        )
-
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                speaking_rate=0.8,
+                pitch=1.2
+            )        
+ 
         response = client.synthesize_speech(
             input=synthesis_input,
             voice=voice,
