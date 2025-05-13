@@ -20,7 +20,14 @@ class SearchManager:
         headers = {
             "X-API-KEY": self.serper_api_key
         }
-        payload = {"q": query}
+        #payload = {"q": query}
+        payload = {
+            "q": query,
+            "hl": "th",
+            "gl": "th",
+            "num": top_k
+        }
+
 
         res = requests.post(url, headers=headers, json=payload)
         res.raise_for_status()
