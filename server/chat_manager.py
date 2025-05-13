@@ -4,6 +4,7 @@ import re
 import json
 from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_MODEL
+from usage_tracker_instance import usage_tracker
 
 class ChatManager:
     def __init__(self,tone="default"):
@@ -46,13 +47,19 @@ class ChatManager:
         if context:
             messages.append({"role": "user", "content": f"Context:\n{context}"})
         messages.append({"role": "user", "content": f"Question:\n{question}"})
-
+              
         response = self.client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=messages,
             temperature=temperature,
         )
-
+        
+        #log the gpt token usage
+        usage = response.usage
+        usage_tracker.log_gpt_usage(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens
+        )
         reply = response.choices[0].message.content.strip()
         return reply
 
@@ -79,6 +86,13 @@ class ChatManager:
             model=OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
+        )
+
+        #log the gpt token usage
+        usage = response.usage
+        usage_tracker.log_gpt_usage(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens
         )
 
         content = response.choices[0].message.content.strip()
