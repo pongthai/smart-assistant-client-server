@@ -19,3 +19,6 @@ sounddevice
 python-multipart
 langdetect
 google-cloud-texttospeech
+pygame
+mutagen
+tuya-connector-python

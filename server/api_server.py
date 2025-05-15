@@ -42,6 +42,8 @@ async def speak(req: Request, background_tasks: BackgroundTasks):
     text = data.get("text", "")
     is_ssml = data.get("is_ssml", False)
 
+    print(f"is_ssml = {is_ssml}")
+
     try:
         mp3_path = tts_manager.synthesize(text=text, is_ssml=is_ssml)
         background_tasks.add_task(cleanup_file, mp3_path)  # ✅ ลบหลังส่ง

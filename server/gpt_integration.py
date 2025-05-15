@@ -2,9 +2,12 @@ import openai
 import time
 import os
 import sys
+import requests
+from entry_map_ha import ENTITY_MAP
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_TONE
+from config import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_TONE, HA_URL, HA_TOKEN
 from chat_manager import ChatManager
 from memory_manager import MemoryManager
 from search_manager import SearchManager
@@ -13,6 +16,19 @@ from logger_config import get_logger
 from latency_logger import LatencyLogger
 
 logger = get_logger(__name__)
+
+HA_HEADERS = {
+    "Authorization": f"Bearer {HA_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+CMD_ACTION_MAP = {
+    "turn_on":"เปิด" ,
+    "turn_off":"ปิด" ,
+    "increase":"เพิ่ม" ,
+    "increase":"ลด" ,
+    "set":"ตั้งค่า" 
+}
 
 
 class GPTClient:
@@ -29,6 +45,26 @@ class GPTClient:
         self.chat_manager = ChatManager(SYSTEM_TONE)
         self.memory_manager = MemoryManager()
         self.search_manager = SearchManager()        
+
+       
+    def call_ha_service_from_function_call(self,cmd):
+        entity_id = ENTITY_MAP.get(cmd["device_name"])
+        if not entity_id:
+            print("❌ Unknown device_name")
+            return
+
+        ha_payload = {"entity_id": entity_id}
+        if cmd.get("attribute") and cmd.get("value") is not None:
+            ha_payload[cmd["attribute"]] = cmd["value"]
+
+        url = f"{HA_URL}/api/services/{cmd['domain']}/{cmd['action']}"
+        response = requests.post(url, headers=HA_HEADERS, json=ha_payload)
+
+        if response.ok:
+            print("✅ Sent to Home Assistant")
+            return CMD_ACTION_MAP[cmd["action"]] + cmd["device_name"] + "เรียบร้อยแล้ว"
+        else:
+            print("❌ HA Error:", response.status_code, response.text)
 
     def get_conversation_history(self, limit=5):
         memories = self.memory_manager.get_recent_memories(limit=limit)
@@ -90,14 +126,20 @@ class GPTClient:
             # Ask GPT
             self.tracker.mark("asking chatGPT - start")
             logger.info("Asking ChatGPT..")
-            answer = self.chat_manager.ask_gpt_with_context(user_voice, context=full_context)
+
+            is_command, answer = self.chat_manager.ask_gpt_with_context(user_voice, context=full_context)
             logger.info("ChatGPT: %s",answer) 
             self.tracker.mark("asking chatGPT - done")           
             self.last_interaction_time = time.time()
 
-            # Save to memory
-            self.memory_manager.add_message("user", user_voice)
-            self.memory_manager.add_message("assistant", answer)
+            if (not is_command):
+                # Save to memory             
+                self.memory_manager.add_message("user", user_voice)
+                self.memory_manager.add_message("assistant", answer)
+            
+            else:                
+                answer = self.call_ha_service_from_function_call(answer["data"])
+        
             self.tracker.report()
             # Update previous question
             self.previous_question = user_voice

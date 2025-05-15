@@ -7,8 +7,8 @@ import os
 import uuid
 import re
 from gtts import gTTS
-from .progressive_tts_manager import ProgressiveTTSManager
-from .logger_config import get_logger
+from progressive_tts_manager import ProgressiveTTSManager
+from logger_config import get_logger
 
 logger = get_logger(__name__)
 
