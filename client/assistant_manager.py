@@ -5,6 +5,7 @@ import time
 import os
 import sys
 import re
+import platform
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from config import IDLE_TIMEOUT,  HELLO_MSG
@@ -16,6 +17,7 @@ from gpt_client_proxy import GPTProxyClient
 
 
 from logger_config import get_logger
+stop_processing_sound_event = threading.Event()  # ใช้หยุด loop การเล่นเสียง
 
 logger = get_logger(__name__)
 
@@ -39,6 +41,42 @@ class AssistantManager:
        # threading.Thread(target=self.voice_listener.command_listener, daemon=True).start()
 
     import re
+
+    def stop_processing_sound(self):
+        stop_processing_sound_event.set()
+
+    def play_processing_loop(self):
+        def _play():
+            sound_file = "processing_sound.mp3"
+            system = platform.system()
+            while not stop_processing_sound_event.is_set():
+                if system == "Darwin":
+                    os.system(f"afplay {sound_file}")
+                elif system == "Linux":
+                    os.system(f"mpg123 {sound_file}")
+                elif system == "Windows":
+                    import winsound
+                    winsound.PlaySound(sound_file, winsound.SND_FILENAME)
+                time.sleep(1.0)  # เว้นช่วงระหว่างเสียง
+
+        stop_processing_sound_event.clear()  # reset ก่อนเล่นใหม่
+        threading.Thread(target=_play, daemon=True).start()
+
+    def play_processing_sound(self,n_times=1, delay=0.2):
+        def _play():
+            sound_file = "processing_sound.mp3"
+            system = platform.system()
+            for _ in range(n_times):
+                if system == "Darwin":  # macOS
+                    os.system(f"afplay {sound_file}")
+                elif system == "Linux":
+                    os.system(f"mpg123 {sound_file}")  # หรือ aplay ถ้าใช้ .wav
+                elif system == "Windows":
+                    import winsound
+                    winsound.PlaySound(sound_file, winsound.SND_FILENAME)
+                time.sleep(delay)  # เว้นจังหวะระหว่างรอบ
+
+        threading.Thread(target=_play, daemon=True).start()
 
     def is_valid_ssml(self,text: str) -> bool:
         """
@@ -76,6 +114,26 @@ class AssistantManager:
                 return False
 
         return True
+    def text_to_ssml(self,text: str, rate: str = "100%", pitch: str = "+1.1st") -> str:
+        """
+        Convert normal text into a simple SSML format for Google Cloud TTS.
+
+        Args:
+            text (str): Input text to convert.
+            rate (str): Speaking rate (e.g., "105%").
+            pitch (str): Voice pitch (e.g., "+2st", "-1st").
+
+        Returns:
+            str: SSML string.
+        """
+        import html
+
+        # Escape special XML characters like &, <, > etc.
+        escaped_text = html.escape(text)
+
+        ssml = f"""<speak><prosody rate="{rate}" pitch="{pitch}">{escaped_text}</prosody></speak>"""
+        return ssml
+
 
     def check_idle(self):
         """ถ้าไม่มี interaction นานเกิน IDLE_TIMEOUT ให้กลับไป Idle Mode"""
@@ -94,7 +152,7 @@ class AssistantManager:
                 self.wake_word_detected.wait()      # ✅ รอ Wake Word
                 self.wake_word_detected.clear()     # ✅ เคลียร์ event สำหรับรอบถัดไป
                 self.conversation_active = True
-                self.audio_manager.speak_from_server(HELLO_MSG)
+                self.audio_manager.speak_from_server(self.text_to_ssml(HELLO_MSG),is_ssml=True)
                 self.last_interaction_time = time.time()
                 time.sleep(1)
                 continue            
@@ -116,18 +174,19 @@ class AssistantManager:
                 #if the user_voice is command then skip - not send to chatGPT
                 #if response:
                 #    continue
-
+                self.play_processing_loop()
                 self.tracker.mark("sending to chatgpt")
                 logger.info(f"Sending to ChatGPT..text={user_voice}")                      
-                answer = self.gpt_client_proxy.ask(user_voice)     
+                answer = self.gpt_client_proxy.ask(user_voice)
+                self.stop_processing_sound()     
                 logger.info(f"ChatGPT={answer}")                         
                 
                 self.tracker.mark("return from server - start speaking")
-                if re.search(r"<speak>.*</speak>", answer, re.DOTALL):
-                    is_ssml = True 
-                else:
-                    is_ssml = False
-                self.audio_manager.speak_from_server(answer,is_ssml)
+                
+                if not re.search(r"<speak>.*</speak>", answer, re.DOTALL):
+                    answer = self.text_to_ssml(answer)
+                
+                self.audio_manager.speak_from_server(answer,is_ssml=True)
                 self.tracker.mark("return from speaking")
                 self.tracker.report()
                 self.last_interaction_time = time.time()

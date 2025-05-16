@@ -118,6 +118,76 @@ class VoiceListener:
             is_speech = is_speech or (volume_db > self.volume_threshold_db)
             audio_buffer.append(audio_chunk)
 
+            # Decay debounce
+            if is_speech:
+                consecutive_voice_frames = min(consecutive_voice_frames + 1, 10)
+                if consecutive_voice_frames >= VOICE_DEBOUNCE_FRAMES:
+                    last_voice_time = time.time()
+            else:
+                consecutive_voice_frames = max(consecutive_voice_frames - 1, 0)
+                if time.time() - last_voice_time > (SILENCE_TIMEOUT_MS / 1000.0):
+                    stop_event.set()
+                    raise sd.CallbackStop()
+
+        try:
+            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback, dtype='float32'):
+                start = time.time()
+                while not stop_event.is_set() and time.time() - start < MAX_RECORD_SECONDS:
+                    sd.sleep(50)
+        except sd.CallbackStop:
+            pass
+
+        valid_chunks = [chunk for chunk in audio_buffer if len(chunk) > 0]
+        if len(valid_chunks) < 3:
+            logger.warning("⚠️ No valid audio captured")
+            return None
+
+        audio_np = np.concatenate(valid_chunks)
+        audio_int16 = (audio_np * 32767).astype(np.int16)
+
+        with io.BytesIO() as wav_io:
+            wav.write(wav_io, SAMPLE_RATE, audio_int16)
+            wav_io.seek(0)
+            with sr.AudioFile(wav_io) as source:
+                audio = self.recognizer.record(source)
+            try:
+                text = self.recognizer.recognize_google(audio, language="th-TH")
+                return text.strip().lower()
+            except Exception as e:
+                return None
+
+
+    def listen_bak(self):
+        vad = webrtcvad.Vad(VAD_MODE)
+        frame_len = int(SAMPLE_RATE * FRAME_DURATION / 1000)
+        audio_buffer = []
+        stop_event = threading.Event()
+
+        consecutive_voice_frames = 0
+        last_voice_time = time.time()
+
+        def calculate_volume_db(chunk):
+            rms = np.sqrt(np.mean(chunk**2)) + 1e-10
+            return 20 * np.log10(rms)
+
+        def callback(indata, frames, time_info, status):
+            nonlocal last_voice_time, consecutive_voice_frames
+
+            audio_chunk = indata[:, 0].copy()
+            audio_int16 = (audio_chunk * 32767).astype(np.int16)
+            volume_db = calculate_volume_db(audio_chunk)
+
+            is_speech = False
+            if len(audio_int16) >= frame_len:
+                frame = audio_int16[:frame_len]
+                try:
+                    is_speech = vad.is_speech(frame.tobytes(), SAMPLE_RATE)
+                except:
+                    pass
+
+            is_speech = is_speech or (volume_db > self.volume_threshold_db)
+            audio_buffer.append(audio_chunk)
+
             #logger.debug(f"🔊 Volume: {volume_db:.1f} dB | Speech: {is_speech} | VoiceFrames: {consecutive_voice_frames}")
 
             if is_speech:
