@@ -8,6 +8,7 @@ import requests
 import platform
 import uuid
 import re
+import queue
 from gtts import gTTS
 from progressive_tts_manager import ProgressiveTTSManager
 from google.cloud import texttospeech
@@ -19,6 +20,7 @@ from logger_config import get_logger
 
 logger = get_logger(__name__)
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH
+
 
 
 class AssistantAvatarPygame:
@@ -36,19 +38,25 @@ class AssistantAvatarPygame:
         self.gif_index = 0
         self.running = True
         self.is_animating = False
+        self.command_queue = queue.Queue()
 
-    # ✅ แค่เตรียมตัว ไม่ต้องรัน loop ที่นี่
     def run(self):
         self._run_loop()
 
     def _play_static(self):
         self.screen.blit(self.static_img, (0, 0))
-        pygame.display.flip()
+        try:
+            pygame.display.flip()
+        except pygame.error as e:
+            logger.error(f"❌ pygame.flip() error (static): {e}")
 
     def _play_gif(self):
         frame = self.gif_frames[self.gif_index]
         self.screen.blit(frame, (0, 0))
-        pygame.display.flip()
+        try:
+            pygame.display.flip()
+        except pygame.error as e:
+            logger.error(f"❌ pygame.flip() error (gif): {e}")
         self.gif_index = (self.gif_index + 1) % len(self.gif_frames)
 
     def _run_loop(self):
@@ -59,6 +67,14 @@ class AssistantAvatarPygame:
                 if event.type == pygame.QUIT:
                     self.running = False
 
+            while not self.command_queue.empty():
+                cmd = self.command_queue.get()
+                if cmd == "animate":
+                    self.is_animating = True
+                elif cmd == "static":
+                    self.is_animating = False
+                    self._play_static()
+
             if self.is_animating:
                 self._play_gif()
             else:
@@ -68,11 +84,11 @@ class AssistantAvatarPygame:
         pygame.quit()
 
     def start_animation(self):
-        self.is_animating = True
+        self.command_queue.put("animate")
 
     def stop_animation(self):
-        self.is_animating = False
-        self._play_static()
+        self.command_queue.put("static")
+
 
 class AudioManager:
     def __init__(self,assistant_manager):

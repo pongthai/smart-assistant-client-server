@@ -1,6 +1,22 @@
 # main.py
 
 from assistant_manager import AssistantManager
+import signal
+import traceback
+import threading
+import sys
+
+def dump_threads(signum, frame):
+    print("\n🧵 === Thread Dump ===")
+    for thread in threading.enumerate():
+        print(f"\nThread: {thread.name} (id: {thread.ident})")
+        stack = sys._current_frames().get(thread.ident)
+        if stack:
+            traceback.print_stack(stack)
+    print("🧵 === End Dump ===")
+
+signal.signal(signal.SIGUSR1, dump_threads)
+
 
 if __name__ == "__main__":
     assistant_manager = AssistantManager()
