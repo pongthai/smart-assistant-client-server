@@ -2,13 +2,25 @@
 
 import re
 import json
+from datetime import datetime, timedelta
 from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_MODEL
 from entry_map_ha import  control_device_function, domain_field_schema, action_field_schema,attribute_field_schema
 from usage_tracker_instance import usage_tracker
 from logger_config import get_logger
 
+
 logger = get_logger(__name__)
+
+# คำที่ผู้ใช้พูดเพื่อขอคำอธิบายเพิ่มเติม (จะสลับไป GPT-4o)
+ESCALATION_KEYWORDS = [
+    "ขอข้อมูลเพิ่ม", "ขอรายละเอียดเพิ่ม", "ขอแบบละเอียด", "อธิบายให้ลึกกว่านี้"
+]
+
+# อายุสูงสุดของ session (เช่น 2 นาที)
+SESSION_EXPIRY_SECONDS = 120
+
+# ในไฟล์ assistant_manager.py หรือ voice_router.py
 
 class ChatManager:
     def __init__(self,tone="default"):
@@ -18,7 +30,43 @@ class ChatManager:
         print("tone=",tone)
         self.functions = [control_device_function]
         self.function_schema_sent = False
+        self.session = {
+            "last_question": None,
+            "last_response": None,
+            "last_model": None,
+            "timestamp": None
+        }
 
+    def user_requests_expert(self,text):
+        return any(kw in text.lower() for kw in ESCALATION_KEYWORDS)
+
+    def is_session_valid(self,session):
+        if "timestamp" not in session:
+            return False
+        return (datetime.now() - session["timestamp"]) < timedelta(seconds=SESSION_EXPIRY_SECONDS)
+    def update_session(self,user_text, model_used, response):
+        self.session["last_question"] = user_text
+        self.session["last_response"] = response
+        self.session["last_model"] = model_used
+        self.session["timestamp"] = datetime.now()
+
+    def build_escalation_prompt(self,user_text, session):
+        if not self.is_session_valid(session):
+            return "ขออภัยครับ คำถามก่อนหน้านี้หมดอายุแล้ว กรุณาถามใหม่อีกครั้งได้ไหมครับ"
+
+        question = session.get("last_question", "").strip()
+        answer = session.get("last_response", "").strip()
+
+        if not question or not answer:
+            return "ขออภัยครับ ผมยังไม่ทราบว่าต้องอธิบายเรื่องใด กรุณาระบุคำถามอีกครั้ง"
+
+        return (
+            f"ผู้ใช้ถามว่า: {question}\n"
+            f"ระบบตอบว่า: {answer}\n"
+            f"ตอนนี้ผู้ใช้พูดว่า: {user_text}\n"
+            f"กรุณาอธิบายเพิ่มเติมอย่างละเอียด พร้อมเหตุผลและคำแนะนำ"
+        )
+  
     def estimate_tokens(self):
         return sum(len(m.get("content", "")) for m in self.messages)
 
@@ -112,10 +160,18 @@ class ChatManager:
         if context:
             messages.append({"role": "user", "content": f"Context:\n{context}"})
         
-        messages.append({"role": "user", "content": f"Question:\n{question}"})
+        gpt_model = OPENAI_MODEL
+        
+        if self.user_requests_expert(question):
+            gpt_model = "gpt-4o"
+            new_prompt = self.build_escalation_prompt(question,self.session)
+            messages.append({"role": "user", "content": new_prompt})
+        else:
+            messages.append({"role": "user", "content": f"Question:\n{question}"})
+       
  
         response = self.client.chat.completions.create(
-                model=OPENAI_MODEL,
+                model=gpt_model,
                 messages=messages,
                 temperature=temperature,
                 functions=[control_device_function],
@@ -124,7 +180,7 @@ class ChatManager:
 
         # ✅ ดึงจำนวน token ที่ใช้
         token_usage = response.usage
-        logger.info(f"MODEL={OPENAI_MODEL}")
+        logger.info(f"MODEL={gpt_model}")
         logger.info(f"Input tokens:{token_usage.prompt_tokens}")
         logger.info(f"Output tokens:{token_usage.completion_tokens}")
         logger.info(f"Total tokens :{token_usage.total_tokens}")
@@ -143,6 +199,7 @@ class ChatManager:
             completion_tokens=usage.completion_tokens
         )
         reply = response.choices[0].message.content.strip()
+        self.update_session(question,gpt_model,reply)
         return False,reply
 
     def analyze_question_all_in_one(self, current_question, previous_question=None):       
