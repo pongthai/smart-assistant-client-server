@@ -45,6 +45,21 @@ class TTSManager:
             text = text.replace(original, combined)
 
         return text
+    def markdown_to_ssml(self,text: str) -> str:
+        """
+        แปลง markdown เช่น **bold** เป็น SSML <emphasis> เพื่อให้ TTS พูดด้วยน้ำเสียงเน้น
+        """
+        # แปลง **bold**
+        text = re.sub(r"\*\*(.*?)\*\*", r'<emphasis level="moderate">\1</emphasis>', text)
+
+        # แปลง *italic* หรือ _italic_
+        text = re.sub(r"(?<!\*)\*(.*?)\*(?!\*)", r'<emphasis level="reduced">\1</emphasis>', text)
+        text = re.sub(r"_(.*?)_", r'<emphasis level="reduced">\1</emphasis>', text)
+
+        # ล้าง strike-through หรืออื่น ๆ ที่ไม่ใช้
+        text = re.sub(r"~~(.*?)~~", r"\1", text)
+        
+        return text.strip()
 
     def sanitize_ssml_text(self,ssml: str) -> str:
         def escape_inside_tags(match):
@@ -53,6 +68,7 @@ class TTSManager:
 
         # Escapeเฉพาะเนื้อหาที่อยู่ระหว่าง >...< ของแต่ละ tag
         sanitized = re.sub(r'>([^<]+)<', escape_inside_tags, ssml)
+        
         return sanitized
 
     def prepare_ssml_for_google_tts(self,text) -> str:
@@ -109,6 +125,7 @@ class TTSManager:
         if is_ssml:     
             print(f"text={text}")
             safe_ssml = self.sanitize_ssml_text(text)
+            safe_ssml = self.markdown_to_ssml(safe_ssml)
             print(f"safe_ssml={safe_ssml}")
             # safe_ssml = self.normalize_ssml_for_neural2(safe_ssml)
             synthesis_input = texttospeech.SynthesisInput(ssml=safe_ssml)

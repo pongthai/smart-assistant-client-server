@@ -22,3 +22,4 @@ google-cloud-texttospeech
 pygame
 mutagen
 tuya-connector-python
+pillow

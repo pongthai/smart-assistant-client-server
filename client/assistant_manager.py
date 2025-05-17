@@ -6,6 +6,8 @@ import os
 import sys
 import re
 import platform
+import datetime
+from dateutil import tz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from config import IDLE_TIMEOUT,  HELLO_MSG
@@ -114,6 +116,23 @@ class AssistantManager:
                 return False
 
         return True
+
+    def insert_today_if_needed(self,text):
+        keywords = ["วันนี้", "พรุ่งนี้", "เมื่อวาน"]
+        now = datetime.datetime.now(tz=tz.gettz("Asia/Bangkok"))
+
+        replacements = {
+            "วันนี้": now.strftime("%A, %d %B %Y"),  # หรือ just: now.date().isoformat()
+            "พรุ่งนี้": (now + datetime.timedelta(days=1)).strftime("%A, %d %B %Y"),
+            "เมื่อวาน": (now - datetime.timedelta(days=1)).strftime("%A, %d %B %Y"),
+        }
+
+        for k, v in replacements.items():
+            if k in text:
+                text = text.replace(k, f"{k} ({v})")
+        
+        return text
+
     def text_to_ssml(self,text: str, rate: str = "100%", pitch: str = "+1.1st") -> str:
         """
         Convert normal text into a simple SSML format for Google Cloud TTS.
@@ -161,6 +180,7 @@ class AssistantManager:
                 #logger.info("Start Listening")                
 
                 user_voice = self.voice_listener.listen()
+                #user_voice = self.insert_today_if_needed(user_voice)
                 
                 if not user_voice:
                     continue

@@ -73,14 +73,13 @@ class ChatManager:
             # )
             return (
                 "คุณคือผู้ช่วยหญิงของบ้านอัจฉริยะ พูดไทยสุภาพ เป็นกันเองแบบเพื่อนในครอบครัว "
-                "ใช้ภาษาพูด เช่น “จ้า”, “น้า” แทน “ค่ะ” "
                 "ตอบอย่างมั่นใจ ถ้าไม่รู้ให้พูดตรง ๆ เช่น “ยังไม่เจอเลยน้า” "
                 "ถ้าเหมาะสมให้ชวนคุย เช่น “มีอะไรอยากรู้เพิ่มอีกไหมจ้า?” "
 
                 "ตอบกลับโดยใช้ SSML ที่รองรับ Google Cloud TTS เท่านั้น: "
                 "- ตอบเฉพาะข้อความที่ต้องพูด "
                 "- ใช้ `<speak>...</speak>` เป็น root "
-                "- ใช้ `<prosody rate=\"100%\" pitch=\"+1.2st\">...</prosody>` เพื่อควบคุมโทน "
+                "- ใช้ `<prosody rate=\"105%\" pitch=\"+1.1st\">...</prosody>` เพื่อควบคุมโทน "
                 "- ใส่ `<break time=\"300ms\"/>` เพื่อเว้นจังหวะ "
                 "- Escape อักขระ เช่น `&`, `<`, `>` "
                 "- ห้ามใช้ Markdown หรืออธิบาย tag SSML "
@@ -125,6 +124,7 @@ class ChatManager:
 
         # ✅ ดึงจำนวน token ที่ใช้
         token_usage = response.usage
+        logger.info(f"MODEL={OPENAI_MODEL}")
         logger.info(f"Input tokens:{token_usage.prompt_tokens}")
         logger.info(f"Output tokens:{token_usage.completion_tokens}")
         logger.info(f"Total tokens :{token_usage.total_tokens}")
