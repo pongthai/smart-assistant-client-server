@@ -12,9 +12,9 @@ import queue
 from gtts import gTTS
 from progressive_tts_manager import ProgressiveTTSManager
 from google.cloud import texttospeech
-from config import GOOGLE_CLOUD_CREDENTIALS_PATH, TTS_SERVER_ENDPOINT, ENABLE_AVATAR_DISPLAY
+from config import GOOGLE_CLOUD_CREDENTIALS_PATH, TTS_SERVER_ENDPOINT, ENABLE_AVATAR_DISPLAY, AVATAR_SCALE
 from PIL import Image, ImageSequence
-
+from pygame import transform
 
 from logger_config import get_logger
 
@@ -24,16 +24,27 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH
 
 
 class AssistantAvatarPygame:
-    def __init__(self, static_img_path, gif_path):
+    def __init__(self, static_img_path, gif_path, scale=1.0):
         pygame.init()
-
+        self.scale = scale
         self.static_img = pygame.image.load(static_img_path)
+
+        if self.scale != 1.0:
+            new_size = (int(self.static_img.get_width() * self.scale), int(self.static_img.get_height() * self.scale))
+            self.static_img = transform.scale(self.static_img, new_size)
+        
         self.screen = pygame.display.set_mode(self.static_img.get_size())
         pygame.display.set_caption("PingPing Avatar")
 
         gif = Image.open(gif_path)
-        self.gif_frames = [pygame.image.fromstring(frame.convert("RGB").tobytes(), frame.size, "RGB")
-                           for frame in ImageSequence.Iterator(gif)]
+        # self.gif_frames = [pygame.image.fromstring(frame.convert("RGB").tobytes(), frame.size, "RGB")
+        #                    for frame in ImageSequence.Iterator(gif)]
+        self.gif_frames = []
+        for frame in ImageSequence.Iterator(gif):
+            frame_pygame = pygame.image.fromstring(frame.convert("RGB").tobytes(), frame.size, "RGB")
+            if self.scale != 1.0:
+                frame_pygame = transform.scale(frame_pygame, new_size)
+            self.gif_frames.append(frame_pygame)
 
         self.gif_index = 0
         self.running = True
@@ -98,7 +109,7 @@ class AudioManager:
         self.tts_manager = ProgressiveTTSManager(assistant_manager)
 
         if ENABLE_AVATAR_DISPLAY:
-            self.avatar = AssistantAvatarPygame("pingping_mouth_closed.png", "pingping_animation.gif")
+            self.avatar = AssistantAvatarPygame("pingping_mouth_closed.png", "pingping_animation.gif", scale=AVATAR_SCALE)
         else:
             self.avatar = None
 

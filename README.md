@@ -37,5 +37,5 @@ COMMAND_WORDS = {
 IDLE_TIMEOUT = 60  # seconds
 HELLO_MSG = "ว่าไงจ๊ะ"
 ENABLE_AVATAR_DISPLAY = True  # หรือ False ถ้าไม่ต้องการให้แสดง Avatar
-
+AVATAR_SCALE = 0.5
 
