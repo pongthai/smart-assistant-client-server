@@ -16,7 +16,7 @@ from voice_listener import VoiceListener
 from voice_command_handler import VoiceCommandHandler
 from latency_logger import LatencyLogger
 from gpt_client_proxy import GPTProxyClient
-
+import vlc
 
 from logger_config import get_logger
 stop_processing_sound_event = threading.Event()  # ใช้หยุด loop การเล่นเสียง
@@ -55,11 +55,14 @@ class AssistantManager:
                 if system == "Darwin":
                     os.system(f"afplay {sound_file}")
                 elif system == "Linux":
-                    os.system(f"mpg123 {sound_file}")
+                    player = vlc.MediaPlayer(sound_file)
+                    player.play()
+
+                    #os.system(f"mpg123 {sound_file}")
                 elif system == "Windows":
                     import winsound
                     winsound.PlaySound(sound_file, winsound.SND_FILENAME)
-                time.sleep(1.0)  # เว้นช่วงระหว่างเสียง
+                time.sleep(1.5)  # เว้นช่วงระหว่างเสียง
 
         stop_processing_sound_event.clear()  # reset ก่อนเล่นใหม่
         threading.Thread(target=_play, daemon=True).start()
@@ -72,7 +75,10 @@ class AssistantManager:
                 if system == "Darwin":  # macOS
                     os.system(f"afplay {sound_file}")
                 elif system == "Linux":
-                    os.system(f"mpg123 {sound_file}")  # หรือ aplay ถ้าใช้ .wav
+                    import vlc
+                    player = vlc.MediaPlayer(sound_file)
+                    #player.play()
+                    #os.system(f"mpg123 {sound_file}")  # หรือ aplay ถ้าใช้ .wav
                 elif system == "Windows":
                     import winsound
                     winsound.PlaySound(sound_file, winsound.SND_FILENAME)

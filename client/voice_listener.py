@@ -117,7 +117,6 @@ class VoiceListener:
 
             is_speech = is_speech or (volume_db > self.volume_threshold_db)
             audio_buffer.append(audio_chunk)
-
             # Decay debounce
             if is_speech:
                 consecutive_voice_frames = min(consecutive_voice_frames + 1, 10)
@@ -141,7 +140,6 @@ class VoiceListener:
         if len(valid_chunks) < 3:
             logger.warning("⚠️ No valid audio captured")
             return None
-
         audio_np = np.concatenate(valid_chunks)
         audio_int16 = (audio_np * 32767).astype(np.int16)
 
@@ -154,6 +152,7 @@ class VoiceListener:
                 text = self.recognizer.recognize_google(audio, language="th-TH")
                 return text.strip().lower()
             except Exception as e:
+                #logger.error(f"Error speech recog...{e}")
                 return None
 
 
