@@ -23,3 +23,5 @@ pygame
 mutagen
 tuya-connector-python
 pillow
+python-dateutil
+python-vlc

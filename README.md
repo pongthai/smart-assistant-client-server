@@ -1,6 +1,26 @@
 # smart-assistant-client-server
 smart-assistant-client-server
 
+=== SETUP Notes ==
+
+# create python environment
+pongthai@rasp-pi-sa:~ $ cd smart-assistant-client-server/
+pongthai@rasp-pi-sa:~/smart-assistant-client-server $ cd client/
+pongthai@rasp-pi-sa:~/smart-assistant-client-server/client $ python3 -m venv venv
+pongthai@rasp-pi-sa:~/smart-assistant-client-server/client $ source ./venv/bin/activate
+
+# install pre-requisite
+sudo apt install portaudio19-dev python3-dev
+
+sudo apt install pulseaudio alsa-utils
+pulseaudio --start
+เพิ่มบรรทัดนี้ไว้ท้ายไฟล์ ~/.bashrc: (better to use service instead)
+
+# install python modules
+pip install -r ../requirements.txt
+
+# create ../config.py as below
+
 =====
 # config.py
 
