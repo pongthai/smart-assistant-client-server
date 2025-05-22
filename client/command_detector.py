@@ -2,9 +2,12 @@ import re
 from slugify import slugify
 from datetime import datetime
 import difflib
-
 from command_entity_map import ENTITY_MAP
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config import CONFIRMATION_KEYWORDS, CANCEL_KEYWORDS, ACTION_KEYWORDS
+from thai_time_parser import parse_thai_time, extract_time_expression
 
 class CommandDetector:
     def __init__(self):
@@ -53,6 +56,39 @@ class CommandDetector:
         match = difflib.get_close_matches(text, options, n=1, cutoff=0.6)
         print(f"match = {match}")
         return match[0] if match else None
+
+    def parse_reminder(self,text: str):
+        print(f"check reminder command text={text}")
+
+        # ✅ พยายามดึงเวลาออกมาก่อน
+        time_part = extract_time_expression(text)
+        print(f"time_part={time_part}")
+
+        if time_part:
+            try:
+                parsed_time = parse_thai_time(time_part)
+                # ✅ เอาเวลาออกจากข้อความ เพื่อเหลือแต่ reminder_text
+                cleaned_text = text
+                for keyword in ["เตือน", "แจ้งเตือน", "เวลา", "ตอน", time_part]:
+                    cleaned_text = cleaned_text.replace(keyword, "")
+                reminder_text = cleaned_text.strip()
+
+                print(f"reminder_text={reminder_text}")
+                print(f"parsed_time={parsed_time}")
+
+                return {
+                    "type": "reminder",
+                    "reminder_text": reminder_text,
+                    "reminder_time": parsed_time.isoformat(),
+                    "raw_text": text
+                }
+
+            except Exception as e:
+                print(f"❌ Failed to parse time: {e}")
+                return None
+        else:
+            print("❌ ไม่พบเวลาในคำสั่ง")
+            return None
 
     def parse_command_to_ha_json(self, text):
         text = text.lower().strip()
@@ -113,37 +149,5 @@ class CommandDetector:
         if command['type'] is not None:
             return command
 
-        # ตรวจสอบ reminder
-        match = re.search(r"(เตือน|แจ้งเตือน)(.*?)(ตอน|เวลา)(.+)", text)
-        if match:
-            reminder_text = match.group(2).strip()
-            time_part = match.group(4).strip()
-            try:
-                parsed_time = self.parse_time(time_part)
-                return {
-                    "type": "reminder",
-                    "reminder_text": reminder_text,
-                    "reminder_time": parsed_time.isoformat(),
-                    "raw_text": text
-                }
-            except Exception:
-                pass
-
-        return None
-
-    def parse_time(self, time_str):
-        now = datetime.now()
-        time_str = time_str.replace("โมง", "").replace(":", "").replace(" ", "")
-        if "ครึ่ง" in time_str:
-            hour = int(re.search(r"\d+", time_str).group())
-            return now.replace(hour=hour, minute=30, second=0, microsecond=0)
-        elif len(time_str) == 4:
-            hour = int(time_str[:2])
-            minute = int(time_str[2:])
-        elif len(time_str) == 2:
-            hour = int(time_str)
-            minute = 0
-        else:
-            raise ValueError("time_str parsing failed")
-
-        return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        command = self.parse_reminder(text)
+        return command
