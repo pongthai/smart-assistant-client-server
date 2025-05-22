@@ -69,7 +69,7 @@ class VoiceListener:
                 continue
 
             with self.listening_lock:
-                text = self.listen(skip_if_speaking=False,keywords_only=True)
+                text = self.listen(skip_if_speaking=False,keywords_only=True,silence_timeout=300,post_padding_seconds=0.1)
                 logger.debug(f"in background listener: text={text}")
 
             if not text:
@@ -103,7 +103,7 @@ class VoiceListener:
         except Exception as e:
             logger.error(f"❌ Failed to save debug audio: {e}")
 
-    def listen(self, skip_if_speaking=True, keywords_only=False):
+    def listen(self, skip_if_speaking=True, keywords_only=False,silence_timeout=SILENCE_TIMEOUT_MS, post_padding_seconds=0.3):
         if skip_if_speaking:
             while self.audio_controller.is_sound_playing:
                 time.sleep(0.1)
@@ -117,7 +117,7 @@ class VoiceListener:
         last_voice_time = time.time()
         recording_started = False
 
-        POST_PADDING_SECONDS = 0.3
+        POST_PADDING_SECONDS = post_padding_seconds
         post_padding_added = False
 
         def calculate_volume_db(chunk):

@@ -15,7 +15,7 @@ def get_logger(name=__name__, log_to_file=True):
 
     # === Console handler ===
     console_handler = logging.StreamHandler()
-    console_formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(name)s - %(message)s", "%H:%M:%S")
+    console_formatter = logging.Formatter("[%(asctime)s.%(msecs)03d]  %(levelname)s - %(name)s - %(message)s", "%H:%M:%S")
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 
@@ -30,7 +30,8 @@ def get_logger(name=__name__, log_to_file=True):
             encoding="utf-8"
         )
         file_formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
+            "%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s",
+            "%Y-%m-%d %H:%M:%S"
         )
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)

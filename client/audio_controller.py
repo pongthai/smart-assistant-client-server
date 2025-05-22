@@ -26,6 +26,16 @@ class AudioController:
         self.stop_flag = threading.Event()
         self.avatar = AssistantAvatarPygame("pingping_mouth_closed.png", "pingping_animation.gif", scale=0.5)
 
+    def cleanup_audio_file(self,file_path):
+        def worker():
+            try:
+                os.remove(file_path)
+                logger.info(f"🗑️ Removed temp file: {file_path}")
+            except Exception as e:
+                logger.error(f"❌ Failed to remove file {file_path}: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def is_speaking(self):
         """Check if currently speaking"""
         return self.is_playing and not self.stop_flag.is_set()
@@ -35,11 +45,8 @@ class AudioController:
         sd.stop()
 
         if self.current_audio_file and os.path.exists(self.current_audio_file):
-            try:
-                os.remove(self.current_audio_file)
-                logger.debug(f"🗑️ Audio file removed: {self.current_audio_file}")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not delete audio file: {e}")
+   
+            self.cleanup_audio_file(self.current_audio_file)   
             self.current_audio_file = None
 
         self.is_playing = False
@@ -88,11 +95,7 @@ class AudioController:
                 # 🔥 Clean up audio file if it's a temporary one
                 if self.current_audio_file and os.path.exists(self.current_audio_file):
                     if TEMP_AUDIO_PATH in self.current_audio_file or "tts_" in os.path.basename(self.current_audio_file):
-                        try:
-                            os.remove(self.current_audio_file)
-                            logger.debug(f"🧹 Auto-removed temp audio file: {self.current_audio_file}")
-                        except Exception as e:
-                            logger.warning(f"⚠️ Failed to delete audio file: {e}")
+                        self.cleanup_audio_file(self.current_audio_file)
                     self.current_audio_file = None
 
         threading.Thread(target=_play, daemon=True).start()

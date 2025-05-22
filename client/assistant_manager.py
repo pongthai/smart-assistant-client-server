@@ -95,7 +95,7 @@ class AssistantManager:
     def stop_processing_loop(self):
         self.processing_stop_event.set()
 
-    def text_to_ssml(self, text: str, rate: str = "100%", pitch: str = "+1.1st") -> str:
+    def text_to_ssml(self, text: str, rate: str = "108%", pitch: str = "+1st") -> str:
         import html
         escaped_text = html.escape(text)
         return f"<speak><prosody rate=\"{rate}\" pitch=\"{pitch}\">{escaped_text}</prosody></speak>"
@@ -147,7 +147,7 @@ class AssistantManager:
                         continue
                     elif command['type'] == "reminder":
                         self.reminder_manager.add_reminder(command)
-                        self.audio_controller.speak(self.text_to_ssml("บันทึกการแจ้งเตือนให้แล้ว"), is_ssml=True)
+                        self.audio_controller.speak(self.text_to_ssml(text="บันทึกการแจ้งเตือนให้แล้ว"), is_ssml=True)
                         self.set_state(AssistantState.LISTENING)
                         continue
                     else:
@@ -170,7 +170,7 @@ class AssistantManager:
             elif self.state == AssistantState.CONFIRMING_COMMAND:
                 self.voice_listener.background_enabled = False
                 with self.voice_listener.listening_lock:
-                    user_response = self.voice_listener.listen( skip_if_speaking=False,keywords_only=True)
+                    user_response = self.voice_listener.listen( skip_if_speaking=False,keywords_only=True,silence_timeout=300,post_padding_seconds=0.1)
                     print(f"user_response={user_response}")
                 self.voice_listener.background_enabled = True
 
