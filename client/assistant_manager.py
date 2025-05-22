@@ -1,233 +1,193 @@
-# assistant/assistant_manager.py
+# assistant_manager.py
 
 import threading
 import time
 import os
 import sys
 import re
-import platform
 import datetime
+from enum import Enum
 from dateutil import tz
+import soundfile as sf
+import sounddevice as sd
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from config import IDLE_TIMEOUT,  HELLO_MSG
-from audio_manager import AudioManager
+from config import IDLE_TIMEOUT, HELLO_MSG
+from audio_controller import AudioController
 from voice_listener import VoiceListener
-from voice_command_handler import VoiceCommandHandler
+from command_handler import CommandHandler
 from latency_logger import LatencyLogger
 from gpt_client_proxy import GPTProxyClient
-import vlc
-
+from command_detector import CommandDetector
+from reminder_manager import ReminderManager
 from logger_config import get_logger
-stop_processing_sound_event = threading.Event()  # ใช้หยุด loop การเล่นเสียง
+from home_assistant_bridge import transform_command_for_ha, send_command_to_ha
+
 
 logger = get_logger(__name__)
+
+class AssistantState(Enum):
+    IDLE = 0
+    LISTENING = 1
+    CONFIRMING_COMMAND = 2
+    RESPONDING = 3
 
 class AssistantManager:
     def __init__(self):
         logger.info("AssistantManager initialized")
-        # 🔥 เตรียม Event เพื่อ Sync Wake Word
+
+        self.state = AssistantState.IDLE
+        self.state_lock = threading.Lock()
+
         self.wake_word_detected = threading.Event()
         self.should_exit = False
-        self.conversation_active = False
         self.last_interaction_time = time.time()
-        self.previous_question = None
+        self.confirmation_pending_command = None
+        self.conversation_active = False
 
-        self.audio_manager = AudioManager(self)
-        self.voice_listener = VoiceListener(self)
-        self.voice_command_handler = VoiceCommandHandler()      
-        
+        self.audio_controller = AudioController(self)
+        self.voice_listener = VoiceListener(self.audio_controller, self.wake_word_detected)
+        self.command_handler = CommandHandler()
         self.gpt_client_proxy = GPTProxyClient()
-        
-        # Start command listener
-       # threading.Thread(target=self.voice_listener.command_listener, daemon=True).start()
+        self.command_detector = CommandDetector()
+        self.reminder_manager = ReminderManager(self.audio_controller)
 
-    import re
+        self.processing_sound_thread = None
+        self.processing_stop_event = threading.Event()
 
-    def stop_processing_sound(self):
-        stop_processing_sound_event.set()
+        threading.Thread(target=self.reminder_manager._reminder_loop, daemon=True).start()
 
-    def play_processing_loop(self):
-        def _play():
-            sound_file = "processing_sound.mp3"
-            system = platform.system()
-            while not stop_processing_sound_event.is_set():
-                if system == "Darwin":
-                    os.system(f"afplay {sound_file}")
-                elif system == "Linux":
-                    player = vlc.MediaPlayer(sound_file)
-                    player.play()
+    def set_state(self, new_state):
+        with self.state_lock:
+            logger.info(f"Transition from [{self.state}] to new state [{new_state}]")
+            self.state = new_state
+            
 
-                    #os.system(f"mpg123 {sound_file}")
-                elif system == "Windows":
-                    import winsound
-                    winsound.PlaySound(sound_file, winsound.SND_FILENAME)
-                time.sleep(1.5)  # เว้นช่วงระหว่างเสียง
+    def start_processing_loop(self):
+        def _loop():
+            filepath = "processing_sound.mp3"
+            try:
+                data, samplerate = sf.read(filepath, dtype='float32')
+                channels = data.shape[1] if len(data.shape) > 1 else 1
 
-        stop_processing_sound_event.clear()  # reset ก่อนเล่นใหม่
-        threading.Thread(target=_play, daemon=True).start()
+                self.audio_controller.is_playing = True
+                self.processing_stop_event.clear()
 
-    def play_processing_sound(self,n_times=1, delay=0.2):
-        def _play():
-            sound_file = "processing_sound.mp3"
-            system = platform.system()
-            for _ in range(n_times):
-                if system == "Darwin":  # macOS
-                    os.system(f"afplay {sound_file}")
-                elif system == "Linux":
-                    import vlc
-                    player = vlc.MediaPlayer(sound_file)
-                    #player.play()
-                    #os.system(f"mpg123 {sound_file}")  # หรือ aplay ถ้าใช้ .wav
-                elif system == "Windows":
-                    import winsound
-                    winsound.PlaySound(sound_file, winsound.SND_FILENAME)
-                time.sleep(delay)  # เว้นจังหวะระหว่างรอบ
+                with sd.OutputStream(samplerate=samplerate, channels=channels) as stream:
+                    while not self.processing_stop_event.is_set():
+                        i = 0
+                        while i < len(data):
+                            if self.processing_stop_event.is_set():
+                                break
+                            end = i + 1024
+                            stream.write(data[i:end])
+                            i = end
+                            self.last_interaction_time = time.time()
 
-        threading.Thread(target=_play, daemon=True).start()
+                        time.sleep(1) #wait before playing next sound
+            except Exception as e:
+                logger.error(f"Error playing processing sound: {e}")
+            finally:
+                self.audio_controller.is_playing = False
 
-    def is_valid_ssml(self,text: str) -> bool:
-        """
-        ตรวจว่า text อยู่ในรูปแบบ SSML ที่ใช้งานได้กับ Google Cloud TTS หรือไม่
-        - ต้องมี <speak>...</speak> ครอบ
-        - tag ต้องไม่ผิดรูป เช่น <prosody><break/></prosody> → ❌
-        - ไม่ควรมี tag ที่ไม่รองรับ เช่น <b>, <i>, <markdown>
-        - <break> ต้องเป็น self-closing
-        """
+        self.processing_sound_thread = threading.Thread(target=_loop, daemon=True)
+        self.processing_sound_thread.start()
 
-        if not isinstance(text, str):
-            return False
+    def stop_processing_loop(self):
+        self.processing_stop_event.set()
 
-        # ต้องมี <speak> ครอบ
-        if not re.search(r"<speak>.*</speak>", text, re.DOTALL):
-            return False
-
-        # ตรวจว่าไม่มี <break> อยู่ใน <prosody>
-        prosody_blocks = re.findall(r"<prosody[^>]*>(.*?)</prosody>", text, re.DOTALL)
-        for inner in prosody_blocks:
-            if "<break" in inner:
-                return False
-
-        # ตรวจว่า <break> เป็น self-closing
-        invalid_breaks = re.findall(r"<break[^>]*/?>", text)
-        for b in invalid_breaks:
-            if not b.endswith("/>"):
-                return False
-
-        # tag ที่ Google TTS รองรับ
-        allowed_tags = {"speak", "prosody", "break", "emphasis", "p", "s", "say-as"}
-        found_tags = re.findall(r"</?(\w+)", text)
-        for tag in found_tags:
-            if tag not in allowed_tags:
-                return False
-
-        return True
-
-    def insert_today_if_needed(self,text):
-        keywords = ["วันนี้", "พรุ่งนี้", "เมื่อวาน"]
-        now = datetime.datetime.now(tz=tz.gettz("Asia/Bangkok"))
-
-        replacements = {
-            "วันนี้": now.strftime("%A, %d %B %Y"),  # หรือ just: now.date().isoformat()
-            "พรุ่งนี้": (now + datetime.timedelta(days=1)).strftime("%A, %d %B %Y"),
-            "เมื่อวาน": (now - datetime.timedelta(days=1)).strftime("%A, %d %B %Y"),
-        }
-
-        for k, v in replacements.items():
-            if k in text:
-                text = text.replace(k, f"{k} ({v})")
-        
-        return text
-
-    def text_to_ssml(self,text: str, rate: str = "100%", pitch: str = "+1.1st") -> str:
-        """
-        Convert normal text into a simple SSML format for Google Cloud TTS.
-
-        Args:
-            text (str): Input text to convert.
-            rate (str): Speaking rate (e.g., "105%").
-            pitch (str): Voice pitch (e.g., "+2st", "-1st").
-
-        Returns:
-            str: SSML string.
-        """
+    def text_to_ssml(self, text: str, rate: str = "100%", pitch: str = "+1.1st") -> str:
         import html
-
-        # Escape special XML characters like &, <, > etc.
         escaped_text = html.escape(text)
-
-        ssml = f"""<speak><prosody rate="{rate}" pitch="{pitch}">{escaped_text}</prosody></speak>"""
-        return ssml
-
+        return f"<speak><prosody rate=\"{rate}\" pitch=\"{pitch}\">{escaped_text}</prosody></speak>"
 
     def check_idle(self):
         """ถ้าไม่มี interaction นานเกิน IDLE_TIMEOUT ให้กลับไป Idle Mode"""
         if self.conversation_active and (time.time() - self.last_interaction_time > IDLE_TIMEOUT):
             print("⌛ Conversation idle timeout. Going back to Wake Word mode.")
             self.conversation_active = False
+        
 
     def run(self):
         logger.info("🚀 Assistant Started. Waiting for Wake Word...")
 
         while not self.should_exit:
-            self.check_idle()
-
-            if not self.conversation_active and not self.audio_manager.is_sound_playing:                
-                logger.info("⌛ Waiting for Wake Word...")
-                self.wake_word_detected.wait()      # ✅ รอ Wake Word
-                self.wake_word_detected.clear()     # ✅ เคลียร์ event สำหรับรอบถัดไป
-                self.conversation_active = True
-                self.audio_manager.speak_from_server(self.text_to_ssml(HELLO_MSG),is_ssml=True)
-                self.last_interaction_time = time.time()
-                time.sleep(1)
-                continue            
+            self.check_idle() 
+            if not self.conversation_active:
+                    self.set_state(AssistantState.IDLE)
             
-            if not self.audio_manager.is_sound_playing:
-                #logger.info("Start Listening")                
+            if self.state == AssistantState.IDLE:
+                logger.info("⌛ Waiting for Wake Word...")
+                self.wake_word_detected.wait()
+                self.wake_word_detected.clear()
+                self.conversation_active = True
+                self.set_state(AssistantState.LISTENING)
+                self.audio_controller.speak(self.text_to_ssml(HELLO_MSG), is_ssml=True)
 
-                user_voice = self.voice_listener.listen()
-                #user_voice = self.insert_today_if_needed(user_voice)
-                
+            elif self.state == AssistantState.LISTENING:
+                self.voice_listener.background_enabled = False
+                with self.voice_listener.listening_lock:
+                    user_voice = self.voice_listener.listen()
+                self.voice_listener.background_enabled = True
+
                 if not user_voice:
+                    self.set_state(AssistantState.LISTENING)
                     continue
-                self.tracker = LatencyLogger()
-                self.tracker.mark("user_said")                
+
                 logger.info(f"🗣️ User said: {user_voice}")
-                self.last_interaction_time = time.time()   
-                
-                #response = self.voice_command_handler.parse_command_action(user_voice)
-                
-                #if the user_voice is command then skip - not send to chatGPT
-                #if response:
-                #    continue
-                self.play_processing_loop()
-                self.tracker.mark("sending to chatgpt")
-                logger.info(f"Sending to ChatGPT..text={user_voice}")                      
+                self.last_interaction_time = time.time()
+
+                command = self.command_detector.detect_command(user_voice)
+                logger.debug(f"command_detector returns = {command}")
+                if command:
+                    if command['type'] == "home_assistant_command":
+                        self.confirmation_pending_command = command
+                        summarize_command = self.command_detector.summarize_command(command)
+                        self.audio_controller.speak(self.text_to_ssml(summarize_command), is_ssml=True)                        
+                        self.set_state(AssistantState.CONFIRMING_COMMAND)
+                        continue
+                    elif command['type'] == "reminder":
+                        self.reminder_manager.add_reminder(command)
+                        self.audio_controller.speak(self.text_to_ssml("บันทึกการแจ้งเตือนให้แล้ว"), is_ssml=True)
+                        self.set_state(AssistantState.LISTENING)
+                        continue
+                    else:
+                        self.audio_controller.speak(self.text_to_ssml("ไม่พบข้อมูลอุปกรณ์ "), is_ssml=True)
+                        self.set_state(AssistantState.LISTENING)
+                        continue
+
+                self.start_processing_loop()
+                logger.info(f"[ChatGPT] Sending text..")
                 answer = self.gpt_client_proxy.ask(user_voice)
-                self.stop_processing_sound()     
-                logger.info(f"ChatGPT={answer}")                         
-                
-                self.tracker.mark("return from server - start speaking")
-                
+                logger.info(f"[ChatGPT] Response text: {answer}")
+                self.stop_processing_loop()
+
                 if not re.search(r"<speak>.*</speak>", answer, re.DOTALL):
                     answer = self.text_to_ssml(answer)
+
+                self.audio_controller.speak(answer, is_ssml=True)
+                self.set_state(AssistantState.LISTENING)
+
+            elif self.state == AssistantState.CONFIRMING_COMMAND:
+                self.voice_listener.background_enabled = False
+                with self.voice_listener.listening_lock:
+                    user_response = self.voice_listener.listen( skip_if_speaking=False,keywords_only=True)
+                    print(f"user_response={user_response}")
+                self.voice_listener.background_enabled = True
+
+                if self.command_detector.is_confirmation(user_response):
+                    self.command_handler.execute_command(self.confirmation_pending_command)                    
+                    logger.info(f"executing command : {self.confirmation_pending_command}")
+                    self.audio_controller.speak(self.text_to_ssml("ดำเนินการเรียบร้อยแล้ว"), is_ssml=True)
+                    self.confirmation_pending_command = None
+                    self.set_state(AssistantState.LISTENING)
+                elif self.command_detector.is_cancellation(user_response):
+                    self.audio_controller.speak(self.text_to_ssml("ยกเลิกคำสั่งแล้ว"), is_ssml=True)
+                    self.confirmation_pending_command = None
+                    self.set_state(AssistantState.LISTENING)
+                else:
+                    self.audio_controller.speak(self.text_to_ssml("ช่วยยืนยันหน่อยนะว่า ใช่ หรือ ไม่"), is_ssml=True)
+
                 
-                self.audio_manager.speak_from_server(answer,is_ssml=True)
-                self.tracker.mark("return from speaking")
-                self.tracker.report()
-                self.last_interaction_time = time.time()
+                
 
         logger.info("👋 Program exiting... Goodbye!")
-        #self.memory_manager.close()
-
-    def get_conversation_history(self, limit=5):
-        memories = self.memory_manager.get_recent_memories(limit=limit)
-
-        if not memories:
-            return ""
-
-        context = ""
-        for role, summary in reversed(memories):
-            context += f"{role.capitalize()}: {summary}\n"
-
-        return context.strip()

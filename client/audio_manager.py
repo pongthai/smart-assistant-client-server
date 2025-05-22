@@ -15,17 +15,24 @@ from google.cloud import texttospeech
 from config import GOOGLE_CLOUD_CREDENTIALS_PATH, TTS_SERVER_ENDPOINT, ENABLE_AVATAR_DISPLAY, AVATAR_SCALE
 from PIL import Image, ImageSequence
 from pygame import transform
+import sounddevice as sd
+import soundfile as sf
+import resampy
 
 from logger_config import get_logger
 
 logger = get_logger(__name__)
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH
 
+sd.default.device = (1,2)
 
+os.environ["SDL_AUDIODRIVER"] = "dummy"
+os.environ["AUDIODEV"] = "plughw:2,0"  # ??????????????? hw:0,0 ?????? HDMI
 
 class AssistantAvatarPygame:
     def __init__(self, static_img_path, gif_path, scale=1.0):
-        pygame.init()
+        pygame.display.init()
+        pygame.font.init()
         self.scale = scale
         self.static_img = pygame.image.load(static_img_path)
 
@@ -104,9 +111,10 @@ class AssistantAvatarPygame:
 class AudioManager:
     def __init__(self,assistant_manager):
         logger.info("AudioManager initialized")
-        pygame.mixer.init()
+        #pygame.mixer.init()
         self.assistant_manager = assistant_manager
-        self.tts_manager = ProgressiveTTSManager(assistant_manager)
+        #self.tts_manager = ProgressiveTTSManager(assistant_manager)
+        self.stop_flag = threading.Event()
 
         if ENABLE_AVATAR_DISPLAY:
             self.avatar = AssistantAvatarPygame("pingping_mouth_closed.png", "pingping_animation.gif", scale=AVATAR_SCALE)
@@ -227,8 +235,54 @@ class AudioManager:
 
         except Exception as e:
             print(f"❌ TTS Error: {e}")
-
     def play_audio(self, filename):
+        def _play():
+            try:
+                logger.debug("Enter play_audio")
+                data, samplerate = sf.read(filename, dtype='float32')
+                channels = data.shape[1] if len(data.shape) > 1 else 1
+
+                target_sr = 48000
+                if samplerate != target_sr:
+                    data = resampy.resample(data.T, samplerate, target_sr).T
+                    samplerate = target_sr
+
+                self.is_sound_playing = True
+                self.stop_flag.clear()
+
+                if self.avatar:
+                    self.avatar.start_animation()
+
+                with sd.OutputStream(device="usb_speaker", samplerate=samplerate, channels=channels) as stream:
+                    blocksize = 1024
+                    i = 0
+                    while i < len(data):
+                        if self.stop_flag.is_set():
+                            break
+                        end = i + blocksize
+                        stream.write(data[i:end])
+                        i = end
+                        self.assistant_manager.last_interaction_time = time.time()
+            except Exception as e:
+                logger.error(f"? Error during playback: {e}")
+            finally:
+                logger.debug ("set is_sound_playing to False")
+                self.is_sound_playing = False
+                if self.avatar:
+                    self.avatar.stop_animation()
+                if self.current_audio_file and os.path.exists(self.current_audio_file):
+                    try:
+                        os.remove(self.current_audio_file)
+                        logger.error(f"? Removed audio file: {self.current_audio_file}")
+                    except Exception as e:
+                        logger.error(f"?? Could not delete audio file: {e}")
+                    self.current_audio_file = None
+
+        # ? ????? thread
+        self.playback_thread = threading.Thread(target=_play, daemon=True)
+        self.playback_thread.start()
+
+    def play_audio_old(self, filename):
         try:
             self.is_sound_playing = True
             if self.avatar:
@@ -266,8 +320,30 @@ class AudioManager:
                     os.remove(filename)
                 except:
                     pass
-
     def stop_audio(self):
+        self.stop_flag.set()
+        sd.stop()  # ???? playback ?????
+        try:
+            sd.wait()
+        except:
+            pass
+
+        if self.current_audio_file and os.path.exists(self.current_audio_file):
+            try:
+                os.remove(self.current_audio_file)
+                print(f"? Removed audio file: {self.current_audio_file}")
+            except Exception as e:
+                print(f"?? Could not delete audio file: {e}")
+            self.current_audio_file = None
+
+        # ???? avatar animation (?????)
+        if self.avatar:
+            self.avatar.stop_animation()
+
+        self.is_sound_playing = False
+
+
+    def stop_audio_old(self):
         # self.tts_manager.stop()
         # self.is_sound_playing = False
 
