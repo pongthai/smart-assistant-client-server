@@ -17,7 +17,7 @@ from logger_config import get_logger
 
 logger = get_logger(__name__)
 
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 44100
 CHANNELS = 1
 FRAME_DURATION = 30      # ms
 VAD_MODE = 2
@@ -34,6 +34,12 @@ class VoiceListener:
         self.volume_threshold_db = self.calibrate_ambient_noise()
         threading.Thread(target=self.background_listener, daemon=True).start()
 
+        print("🎧 Default Input/Output device index:", sd.default.device)
+        print("🔌 Default host API:", sd.query_hostapis(sd.default.hostapi)['name'])
+        print("🎙️ All available devices:")
+        print(sd.query_devices())
+
+
     def calibrate_ambient_noise(self, duration=3.0):
         logger.info(f"🔧 Calibrating ambient noise for {duration:.1f} sec...")
         samples = []
@@ -42,7 +48,7 @@ class VoiceListener:
             audio_chunk = indata[:, 0].copy()
             samples.append(audio_chunk)
 
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback, dtype='float32'):
+        with sd.InputStream(device=0,samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback, dtype='float32'):
             sd.sleep(int(duration * 1000))
 
         all_audio = np.concatenate(samples)
@@ -129,7 +135,7 @@ class VoiceListener:
                     raise sd.CallbackStop()
 
         try:
-            with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback, dtype='float32'):
+            with sd.InputStream(device = 0,samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback, dtype='float32'):
                 start = time.time()
                 while not stop_event.is_set() and time.time() - start < MAX_RECORD_SECONDS:
                     sd.sleep(50)

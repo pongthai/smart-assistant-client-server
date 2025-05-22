@@ -9,9 +9,10 @@ from logger_config import get_logger
 logger = get_logger(__name__)
 
 class SearchManager:
-    def __init__(self):
+    def __init__(self, gpt_client ):
         logger.info("SearchManager initialized")
         self.serper_api_key = SERPER_API_KEY
+        self.gpt_client = gpt_client
 
     def search_serper(self, query, top_k=5):
         
@@ -36,6 +37,31 @@ class SearchManager:
         results = data.get("organic", [])[:top_k]
         logger.debug("Exit search_perper")
         return results
+
+    def should_fetch(self,link, snippet):
+        if not snippet or len(snippet) < 80: return True
+        whitelist = ["siamsport.co.th", "tmd.go.th", "bangkokbiznews.com"]
+        return any(site in link for site in whitelist)
+    
+    def summarize_web_context(self, context_str, user_question):
+        #logger.debug("Enter summarize_web_context")
+        if not context_str:
+            return ""
+        #logger.debug(f" === context = {context_str}")
+        prompt = (
+            f"คุณเป็นผู้ช่วยที่สามารถสรุปข้อมูลจากเว็บได้อย่างแม่นยำ\n"
+            f"คำถาม: {user_question}\n"
+            f"ข้อมูลล่าสุดที่พบ:\n{context_str[:3000]}\n"
+            f"\nสรุปคำตอบให้กระชับภายใน 3-5 บรรทัด ถ้าไม่เจอข้อมูลให้บอกว่า 'ยังไม่พบข้อมูลล่าสุดจ้า'"
+        )
+
+        try:
+            summary = self.gpt_client. chat_manager.ask_simple(prompt)
+            #logger.debug(f" ==== summary : {summary}")
+            return summary.strip() if summary else ""
+        except Exception as e:
+            logger.error(f"❌ Error summarizing context: {e}")
+        return ""
 
     def fetch_webpage_content(self, url):
         try:
@@ -62,18 +88,15 @@ class SearchManager:
                 continue
 
             # 🔥 ลอง fetch เนื้อหาจากหน้าเว็บจริง
-            page_content = self.fetch_webpage_content(link)
+            page_content = ""
+            # if self.should_fetch(link, snippet):
+            #     page_content = self.fetch_webpage_content(link)
 
-            # 🔥 เอาแค่ย่อหน้าแรกพอ ไม่งั้น context ยาวเกิน
-            if page_content:
-                page_content = page_content.split("\n")[0][:500]  # ตัดที่ 500 ตัวอักษรแรก
+            #     # 🔥 เอาแค่ย่อหน้าแรกพอ ไม่งั้น context ยาวเกิน
+            #     if page_content:
+            #         page_content = page_content.split("\n")[0][:500]  # ตัดที่ 500 ตัวอักษรแรก
+            #page_content = self.fetch_webpage_content(link)
 
-    #        context_entry = f"""
-    #{idx}. {title}
-    #{snippet}
-    #Link: {link}
-    #Extracted Content: {page_content if page_content else 'N/A'}
-    #""".strip()
             context_entry = f"""
     {idx}. {title}:
     {snippet}    

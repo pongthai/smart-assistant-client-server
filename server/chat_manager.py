@@ -127,17 +127,17 @@ class ChatManager:
                 "ตอบกลับโดยใช้ SSML ที่รองรับ Google Cloud TTS เท่านั้น: "
                 "- ตอบเฉพาะข้อความที่ต้องพูด "
                 "- ใช้ `<speak>...</speak>` เป็น root "
-                "- ใช้ `<prosody rate=\"105%\" pitch=\"+1.1st\">...</prosody>` เพื่อควบคุมโทน "
+                "- ใช้ `<prosody rate=\"108%\" pitch=\"+1st\">...</prosody>` เพื่อควบคุมโทน "
                 "- ใส่ `<break time=\"300ms\"/>` เพื่อเว้นจังหวะ "
                 "- Escape อักขระ เช่น `&`, `<`, `>` "
                 "- ห้ามใช้ Markdown หรืออธิบาย tag SSML "
 
-                "หากคำสั่งเกี่ยวข้องกับอุปกรณ์ (เช่น เปิดไฟ ปิดแอร์ ปรับเสียง): "
-                "- เรียก `control_device()` ทันที "
-                "- ห้ามพิมพ์ JSON เอง หรือพูดตอบเชิงยืนยัน "
-                "- ใส่ข้อมูล: `domain`, `device_name`, `action`, `attribute`, `value` "
+                # "หากคำสั่งเกี่ยวข้องกับอุปกรณ์ (เช่น เปิดไฟ ปิดแอร์ ปรับเสียง): "
+                # "- เรียก `control_device()` ทันที "
+                # "- ห้ามพิมพ์ JSON เอง หรือพูดตอบเชิงยืนยัน "
+                # "- ใส่ข้อมูล: `domain`, `device_name`, `action`, `attribute`, `value` "
 
-                "หากไม่เกี่ยวกับอุปกรณ์ ให้ตอบด้วยโทนที่อ่อนโยน ชัดเจน "
+                # "หากไม่เกี่ยวกับอุปกรณ์ ให้ตอบด้วยโทนที่อ่อนโยน ชัดเจน "
                 "และไม่พูดทำนอง “จากข้อมูลที่มีอยู่” หรือ “ตาม context”"
             )
         else:
@@ -173,9 +173,9 @@ class ChatManager:
         response = self.client.chat.completions.create(
                 model=gpt_model,
                 messages=messages,
-                temperature=temperature,
-                functions=[control_device_function],
-                function_call= "auto"
+                temperature=temperature
+                #functions=[control_device_function],
+                #function_call= "auto"
             )
 
         # ✅ ดึงจำนวน token ที่ใช้
@@ -185,12 +185,12 @@ class ChatManager:
         logger.info(f"Output tokens:{token_usage.completion_tokens}")
         logger.info(f"Total tokens :{token_usage.total_tokens}")
          
-        choice = response.choices[0]
-        finish_reason = choice.finish_reason
-        if finish_reason == "function_call":
-            func = choice.message.function_call
-            args = json.loads(func.arguments)
-            return True, {"type": "function_call", "data": args}
+        # choice = response.choices[0]
+        # finish_reason = choice.finish_reason
+        # if finish_reason == "function_call":
+        #     func = choice.message.function_call
+        #     args = json.loads(func.arguments)
+        #     return True, {"type": "function_call", "data": args}
        
         #log the gpt token usage
         usage = response.usage
@@ -202,6 +202,18 @@ class ChatManager:
         self.update_session(question,gpt_model,reply)
         return False,reply
 
+    def ask_simple(self, prompt: str) -> str:
+        try:        
+            response = self.client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content.strip()
+
+        except Exception as e:
+            logger.error(f"❌ Error in ask_simple: {e}")
+            return ""
+        
     def analyze_question_all_in_one(self, current_question, previous_question=None):       
  
         if previous_question:
