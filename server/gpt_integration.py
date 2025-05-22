@@ -44,7 +44,7 @@ class GPTClient:
 
         self.chat_manager = ChatManager(SYSTEM_TONE)
         self.memory_manager = MemoryManager()
-        self.search_manager = SearchManager()        
+        self.search_manager = SearchManager(self)        
 
        
     def call_ha_service_from_function_call(self,cmd):
@@ -102,9 +102,12 @@ class GPTClient:
                 self.tracker.mark("searching web - start")
                 logger.info("🌐 Searching web.,")                
                 search_results = self.search_manager.search_serper(user_voice, top_k=5)
-                web_context = self.search_manager.build_context_from_search_results(search_results)
-                context_parts.append(web_context)
-                logger.info("S Searching web...done")
+                #logger.debug(f"search_result={search_results}")
+                #web_context = self.search_manager.build_context_from_search_results(search_results)
+                summarized_context = self.search_manager.summarize_web_context(search_results, user_voice)
+                #logger.debug(f"summarized_text = {summarized_context.strip()}")
+                context_parts.append(summarized_context)
+                logger.info(f"Searching web...done : {summarized_context}")
                 self.tracker.mark("searching web - done")
 
             if need_memory:
