@@ -1,3 +1,5 @@
+# gpt_integration.py (refactored with structured context support)
+
 import openai
 import time
 import os
@@ -23,13 +25,12 @@ HA_HEADERS = {
 }
 
 CMD_ACTION_MAP = {
-    "turn_on":"เปิด" ,
-    "turn_off":"ปิด" ,
-    "increase":"เพิ่ม" ,
-    "increase":"ลด" ,
-    "set":"ตั้งค่า" 
+    "turn_on": "เปิด",
+    "turn_off": "ปิด",
+    "increase": "เพิ่ม",
+    "decrease": "ลด",
+    "set": "ตั้งค่า"
 }
-
 
 class GPTClient:
     def __init__(self, api_key: str = None, model: str = OPENAI_MODEL):
@@ -44,10 +45,9 @@ class GPTClient:
 
         self.chat_manager = ChatManager(SYSTEM_TONE)
         self.memory_manager = MemoryManager()
-        self.search_manager = SearchManager(self)        
+        self.search_manager = SearchManager(self)
 
-       
-    def call_ha_service_from_function_call(self,cmd):
+    def call_ha_service_from_function_call(self, cmd):
         entity_id = ENTITY_MAP.get(cmd["device_name"])
         if not entity_id:
             print("❌ Unknown device_name")
@@ -68,25 +68,22 @@ class GPTClient:
 
     def get_conversation_history(self, limit=5):
         memories = self.memory_manager.get_recent_memories(limit=limit)
-
         if not memories:
             return ""
 
         context = ""
         for role, summary in reversed(memories):
             context += f"{role.capitalize()}: {summary}\n"
-
         return context.strip()
-    
+
     def ask(self, user_voice: str) -> str:
-        
         try:
-            # Analyze need (Web search / Memory / History)
             self.tracker = LatencyLogger()
+            logger.info(f"User question:{user_voice}")
             self.tracker.mark("analyze_question_all_in_one - start")
             analysis = self.chat_manager.analyze_question_all_in_one(
-            current_question=user_voice,
-            previous_question=self.previous_question
+                current_question=user_voice,
+                previous_question=self.previous_question
             )
 
             need_web = analysis.get("need_web_search", "No") == "Yes"
@@ -95,17 +92,15 @@ class GPTClient:
 
             logger.info(f"📊 Analysis: need_web={need_web}, need_memory={need_memory}, need_history={need_history}")
             self.tracker.mark("analyze_question_all_in_one - done")
-            # Build context
+
             context_parts = []
 
             if need_web:
                 self.tracker.mark("searching web - start")
-                logger.info("🌐 Searching web.,")                
+                logger.info("🌐 Searching web...")
                 search_results = self.search_manager.search_serper(user_voice, top_k=5)
                 #logger.debug(f"search_result={search_results}")
-                #web_context = self.search_manager.build_context_from_search_results(search_results)
                 summarized_context = self.search_manager.summarize_web_context(search_results, user_voice)
-                #logger.debug(f"summarized_text = {summarized_context.strip()}")
                 context_parts.append(summarized_context)
                 logger.info(f"Searching web...done : {summarized_context}")
                 self.tracker.mark("searching web - done")
@@ -126,30 +121,23 @@ class GPTClient:
             if not full_context:
                 logger.info("🚀 No extra context needed.")
 
-            # Ask GPT
             self.tracker.mark("asking chatGPT - start")
-            logger.info("Asking ChatGPT..")
-
+            logger.info("Asking ChatGPT...")
             is_command, answer = self.chat_manager.ask_gpt_with_context(user_voice, context=full_context)
-            logger.info("ChatGPT: %s",answer) 
-            self.tracker.mark("asking chatGPT - done")           
+            logger.info("ChatGPT: %s", answer)
+            self.tracker.mark("asking chatGPT - done")
             self.last_interaction_time = time.time()
 
-            if (not is_command):
-                # Save to memory             
+            if not is_command:
                 self.memory_manager.add_message("user", user_voice)
                 self.memory_manager.add_message("assistant", answer)
-            
-            else:                
+            else:
                 answer = self.call_ha_service_from_function_call(answer["data"])
-        
-            self.tracker.report()
-            # Update previous question
-            self.previous_question = user_voice
 
-            return answer   
-        
+            self.tracker.report()
+            self.previous_question = user_voice
+            return answer
+
         except Exception as e:
             print(f"❌ GPT Error: {e}")
             return "ขอโทษค่ะ เกิดข้อผิดพลาดในการประมวลผลคำถาม"
-
