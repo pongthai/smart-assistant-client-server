@@ -8,7 +8,7 @@ if __name__ == "__main__":
 
     command_detector = CommandDetector()
 
-    text = "ช่วยเตือนตอนเที่ยงว่าต้องกินยา"
+    text = "ช่วยเตือนว่าต้องกินยาเวลา 5 โมง 15 นาที ได้มั๊ย"
     command = command_detector.detect_command(text)
     print(f"command = {command}")
     

@@ -150,10 +150,10 @@ class AssistantManager:
                         self.audio_controller.speak(self.text_to_ssml(text="บันทึกการแจ้งเตือนให้แล้ว"), is_ssml=True)
                         self.set_state(AssistantState.LISTENING)
                         continue
-                    else:
-                        self.audio_controller.speak(self.text_to_ssml("ไม่พบข้อมูลอุปกรณ์ "), is_ssml=True)
-                        self.set_state(AssistantState.LISTENING)
-                        continue
+                    # else:
+                    #     self.audio_controller.speak(self.text_to_ssml("ไม่พบข้อมูลอุปกรณ์ "), is_ssml=True)
+                    #     self.set_state(AssistantState.LISTENING)
+                    #     continue
 
                 self.start_processing_loop()
                 logger.info(f"[ChatGPT] Sending text..")

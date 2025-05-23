@@ -6,15 +6,16 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 import dateparser
 from logger_config import get_logger
+import audio_controller
 
 logger = get_logger(__name__)
 
 class ReminderManager:
-    def __init__(self, speak_callback):
+    def __init__(self, audio_controller):
         self.reminders: List[Dict] = []
         self.lock = threading.Lock()
         self.running = True
-        self.speak_callback = speak_callback  # Function to call when reminder is triggered
+        self.audio_controller = audio_controller    
         threading.Thread(target=self._reminder_loop, daemon=True).start()
     def parse_reminder_command(self,text):
         # ตัวอย่าง: "เตือนฉันอีก 3 นาทีให้ไปกินข้าว"
@@ -37,18 +38,27 @@ class ReminderManager:
         trigger_time = datetime.now() + delta
         return (message, trigger_time)
 
-    def add_reminder(self, text: str) -> bool:
+    def add_reminder(self, reminder_data: str) -> bool:
         # Example: "เตือนฉันตอน 9 โมงเช้าให้กินยา"
-        parsed_time = dateparser.parse(text, settings={"PREFER_DATES_FROM": "future"})
-        if not parsed_time:
-            logger.warning("Unable to parse time from: " + text)
-            return False
+        reminder_time = datetime.fromisoformat(reminder_data["reminder_time"])
 
-        message = text  # For simplicity, we use the whole text for now
+        reminder_text = reminder_data["reminder_text"]
+        now = datetime.now()
+
+        if reminder_time <= now:                
+            logger.warning("⏰ เวลาที่ระบุอยู่ในอดีต: %s", reminder_time)
+            return
+
+        delay = (reminder_time - now).total_seconds()
+        logger.info("📌 ตั้งการเตือน: '%s' ที่ %s (อีก %.1f วินาที)", reminder_text, reminder_time, delay)
+       
         with self.lock:
-            self.reminders.append({"time": parsed_time, "message": message, "spoken": False})
-        logger.info(f"Reminder added: {parsed_time} - {message}")
+            self.reminders.append({"time": reminder_time, "message": reminder_text, "spoken": False})
+        logger.info(f"Reminder added: {reminder_time} - {reminder_text}")
         return True
+
+    def process_triggered_alarm(self,text):
+        self.audio_controller.speak(text=text)     
 
     def _reminder_loop(self):
         while self.running:
@@ -57,7 +67,7 @@ class ReminderManager:
                 for reminder in self.reminders:
                     if not reminder["spoken"] and reminder["time"] <= now:
                         logger.info(f"Triggering reminder: {reminder['message']}")
-                        self.speak_callback(reminder["message"])
+                        self.process_triggered_alarm(reminder['message'])               
                         reminder["spoken"] = True
             time.sleep(10)  # check every 10 seconds
 

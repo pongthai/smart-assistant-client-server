@@ -1,6 +1,6 @@
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # แปลงเลขไทยและเลขคำเป็นเลขอารบิก
 THAI_NUM_TEXT = {
@@ -14,6 +14,31 @@ def replace_thai_numbers(text: str) -> str:
     for word, digit in THAI_NUM_TEXT.items():
         text = text.replace(word, str(digit))
     return text
+    
+def extract_relative_time(text: str):
+    match = re.search(r"(อีก)\s*(\d{1,2})\s*(ชั่วโมง|นาที)", text)
+    if match:
+        value = int(match.group(2))
+        unit = match.group(3)
+        if "ชั่วโมง" in unit:
+            return timedelta(hours=value)
+        elif "นาที" in unit:
+            return timedelta(minutes=value)
+    return None
+
+def extract_extra_minutes(text: str) -> int:
+    match = re.search(r"(?:\s|ตอน|เวลา)?\d{1,2}[^\\d]*(\d{1,2})\s*นาที", text)
+    if match:
+        return int(match.group(1))
+    return 0
+
+def extract_time_digit(text):
+    match = re.search(r"(?:เวลา)?\s*(\d{1,2})[:.](\d{1,2})\s*(น\.?)?", text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        return hour, minute
+    return None
 
 def extract_time_expression(text: str) -> str | None:
     text = replace_thai_numbers(text)  # ทำให้ "บ่ายสอง" → "บ่าย2"
