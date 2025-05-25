@@ -120,6 +120,7 @@ class AssistantManager:
                 self.wake_word_detected.wait()
                 self.wake_word_detected.clear()
                 self.conversation_active = True
+                self.last_interaction_time = time.time()
                 self.set_state(AssistantState.LISTENING)
                 self.audio_controller.speak(self.text_to_ssml(HELLO_MSG), is_ssml=True)
 
