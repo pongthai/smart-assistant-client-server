@@ -27,3 +27,5 @@ python-dateutil
 resampy
 slugify
 dateparser
+langdetect
+deep_translator

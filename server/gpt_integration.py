@@ -13,6 +13,7 @@ from config import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_TONE, HA_URL, HA_TOKEN
 from chat_manager import ChatManager
 from memory_manager import MemoryManager
 from search_manager import SearchManager
+from background_summarizer import MemoryBackgroundSummarizer, HistoryBackgroundSummarizer
 
 from logger_config import get_logger
 from latency_logger import LatencyLogger
@@ -45,7 +46,13 @@ class GPTClient:
 
         self.chat_manager = ChatManager(SYSTEM_TONE)
         self.memory_manager = MemoryManager()
-        self.search_manager = SearchManager(self)
+        self.search_manager = SearchManager(self)        
+        self.memory_summarizer = MemoryBackgroundSummarizer(memory_manager=self.memory_manager  )
+        self.history_summarizer = HistoryBackgroundSummarizer(memory_manager=self.memory_manager)
+ 
+    def stop(self):
+        self.memory_summarizer.stop()
+        self.history_summarizer.stop()
 
     def call_ha_service_from_function_call(self, cmd):
         entity_id = ENTITY_MAP.get(cmd["device_name"])
@@ -98,23 +105,40 @@ class GPTClient:
             if need_web:
                 self.tracker.mark("searching web - start")
                 logger.info("🌐 Searching web...")
-                search_results = self.search_manager.search_serper(user_voice, top_k=5)
-                #logger.debug(f"search_result={search_results}")
-                summarized_context = self.search_manager.summarize_web_context(search_results, user_voice)
+                search_results = self.search_manager.search_dual_language(user_voice, top_k=10)
+                self.tracker.mark("searching_dual_lang")
+                logger.debug(f"search_result={search_results}")
+                search_context = self.search_manager.build_context_from_search_results(search_results,enable_fetch=False)
+                self.tracker.mark("build_context_from_search_results")
+                summarized_context = self.search_manager.summarize_web_context(search_context, user_voice)
+                self.tracker.mark("summarize_web_context")
                 context_parts.append(summarized_context)
                 logger.info(f"Searching web...done : {summarized_context}")
                 self.tracker.mark("searching web - done")
 
             if need_memory:
-                logger.info("🧠 Loading memory...")
-                recent_memories = self.memory_manager.get_recent_memories(limit=5)
-                memory_text = "\n".join([f"{role.capitalize()}: {summary}" for role, summary in reversed(recent_memories)])
-                context_parts.append(memory_text)
-
+                # logger.info("🧠 Loading memory...")
+                # recent_memories = self.memory_manager.get_recent_memories(limit=5)
+                # memory_text = "\n".join([f"{role.capitalize()}: {summary}" for role, summary in reversed(recent_memories)])
+                # context_parts.append(memory_text)    
+                logger.info("🧠 Summarizing memory...")
+                recent_memories = self.memory_manager.get_recent_memories(limit=10)
+                summary = self.chat_manager.summarize_memories(recent_memories)
+                context_parts.append(f"💭 ความทรงจำล่าสุด:\n{summary}")
+                
             if need_history:
+                # logger.info("🗣️ Loading conversation history...")
+                # history_text = self.get_conversation_history(limit=5)
+                # context_parts.append(history_text)
+
                 logger.info("🗣️ Loading conversation history...")
-                history_text = self.get_conversation_history(limit=5)
-                context_parts.append(history_text)
+                history_summary = self.memory_manager.get_latest_history_summary()
+                if history_summary:
+                    context_parts.append(f"📘 ประวัติย่อ: {history_summary}")
+                else:
+                    full_history = self.get_conversation_history(limit=5)
+                    context_parts.append(full_history)
+                    
 
             full_context = "\n\n".join(context_parts).strip()
 

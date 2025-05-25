@@ -122,11 +122,9 @@ class TTSManager:
     def synthesize(self, text: str, is_ssml=False) -> str:
         client = texttospeech.TextToSpeechClient()
 
-        if is_ssml:     
-            print(f"text={text}")
+        if is_ssml:                 
             safe_ssml = self.sanitize_ssml_text(text)
-            safe_ssml = self.markdown_to_ssml(safe_ssml)
-            print(f"safe_ssml={safe_ssml}")
+            safe_ssml = self.markdown_to_ssml(safe_ssml)            
             # safe_ssml = self.normalize_ssml_for_neural2(safe_ssml)
             synthesis_input = texttospeech.SynthesisInput(ssml=safe_ssml)
         else:

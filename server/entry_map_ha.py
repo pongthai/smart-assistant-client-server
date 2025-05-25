@@ -12,6 +12,7 @@ ENTITY_MAP = {
     "ไฟเครื่องทำน้ำแข็ง": "switch.vox_smart_wifi_adapter_socket_1",
     "แอร์ห้องนอน": "climate.bedroom_ac",
     "แอร์ห้องนั่งเล่น" : "climate.living_room_ac",
+    "แอร์ห้องทำงาน" : "climate.living_room_ac",
     "ไฟน้ำพุหน้าบ้าน" : "switch.swithchnmaaphu_hnaabaan_switch_1"
 }
 # --- Schema fields with title+const+description ---

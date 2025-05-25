@@ -7,13 +7,32 @@ from voice_profile_manager import VoiceProfileManager
 from fastapi.responses import FileResponse,JSONResponse
 from tts_manager import TTSManager
 from usage_tracker_instance import usage_tracker
-
+from contextlib import asynccontextmanager
 import tempfile
 import shutil
 import os
 
-app = FastAPI()
 gpt_client = GPTClient()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+     # ✅ startup
+    print("🚀 Starting memory summarizer...")
+    gpt_client.memory_summarizer.start()
+
+    print("🚀 Starting history summarizer...")
+    gpt_client.history_summarizer.start()
+
+    yield
+
+    # ✅ shutdown
+    print("🛑 Stopping memory summarizer...")
+    gpt_client.memory_summarizer.stop()
+
+    print("🛑 Stopping history summarizer...")
+    gpt_client.history_summarizer.stop()
+
+app = FastAPI(lifespan=lifespan)
+
 vpm = VoiceProfileManager()
 tts_manager = TTSManager()
 
@@ -42,7 +61,7 @@ async def speak(req: Request, background_tasks: BackgroundTasks):
     text = data.get("text", "")
     is_ssml = data.get("is_ssml", False)
 
-    print(f"is_ssml = {is_ssml}")
+    #print(f"is_ssml = {is_ssml}")
 
     try:
         mp3_path = tts_manager.synthesize(text=text, is_ssml=is_ssml)
@@ -96,3 +115,8 @@ async def health_check():
 @app.get("/")
 async def root():
     return {"message": "Smart Assistant API is running."}
+
+ 
+
+
+

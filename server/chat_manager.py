@@ -4,9 +4,13 @@ import re
 import json
 from datetime import datetime, timedelta
 from openai import OpenAI
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 from config import OPENAI_API_KEY, OPENAI_MODEL
 from entry_map_ha import control_device_function, domain_field_schema, action_field_schema, attribute_field_schema
 from usage_tracker_instance import usage_tracker
+ 
 from logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -28,6 +32,7 @@ class ChatManager:
             "timestamp": None
         }
 
+ 
     def user_requests_expert(self, text):
         return any(kw in text.lower() for kw in ESCALATION_KEYWORDS)
 
@@ -63,8 +68,12 @@ class ChatManager:
         self.tone = tone
 
     def get_system_prompt(self, tone="default"):
+        from datetime import datetime
+        today_thai = datetime.today().strftime("%d %B %Y")
+
         if tone == "family":
             return (
+                f"วันนี้คือวันที่ {today_thai}\n"
                 "คุณคือผู้ช่วยหญิงของบ้านอัจฉริยะ ชื่อ ผิงผิง พูดไทยสุภาพ เป็นกันเองแบบเพื่อนในครอบครัว"
                 "ตอบอย่างมั่นใจ โดยใช้ความรู้ทั่วไปที่คุณเคยเรียนรู้จากการฝึกฝน หากไม่แน่ใจในตัวเลข ให้ตอบประมาณการได้อย่างสมเหตุสมผล"
                 "สามารถตอบเชิงประเมินหรือประมาณการได้ถ้าเป็นประโยชน์ต่อผู้ใช้"
@@ -80,10 +89,12 @@ class ChatManager:
             )
         else:
             return (
+                f"วันนี้คือวันที่ {today_thai}\n"
                 "You are a polite, Thai-speaking female assistant who answers in Thai using 'ค่ะ'. "
                 "Answer clearly without saying 'จากข้อมูลที่ให้มา'. If the answer is found in the context, state it directly. "
                 "If not clear, infer reasonably and mention it. If no info, say so politely."
             )
+
 
     def ask_gpt_with_context(self, question, context=""):
         system_prompt = self.get_system_prompt(self.tone)
