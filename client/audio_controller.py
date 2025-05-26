@@ -10,7 +10,7 @@ import time
 
 from avatar_display import AssistantAvatarPygame
 
-from config import TEMP_AUDIO_PATH, TTS_SERVER_ENDPOINT, SAMPLE_RATE, AVATAR_STATIC, AVATAR_ANIMATION
+from config import TEMP_AUDIO_PATH, TTS_SERVER_ENDPOINT, SAMPLE_RATE, AVATAR_SCALE, AVATAR_STATIC, AVATAR_ANIMATION
 from logger_config import get_logger
 
 sd.default.device = (0, 0)
@@ -24,7 +24,7 @@ class AudioController:
         self.current_audio_file = None
         self.is_sound_playing = False
         self.stop_flag = threading.Event()
-        self.avatar = AssistantAvatarPygame(AVATAR_STATIC, AVATAR_ANIMATION, scale=0.5)
+        self.avatar = AssistantAvatarPygame(AVATAR_STATIC, AVATAR_ANIMATION, scale=AVATAR_SCALE)
 
     def cleanup_audio_file(self,file_path):
         def worker():
