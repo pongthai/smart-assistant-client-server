@@ -5,7 +5,7 @@ import os
 import platform
 import html
 import re
-from usage_tracker_instance import usage_tracker
+from .usage_tracker_instance import usage_tracker
 from config import GOOGLE_CLOUD_CREDENTIALS_PATH
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH

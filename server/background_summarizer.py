@@ -67,15 +67,15 @@ class MemoryBackgroundSummarizer:
             logger.error(f"❌ Failed to summarize memory: {e}")
     
     def _run_loop(self):
-        logger.info("🔁 Loop started.")
+        logger.debug("🔁 Loop started.")
         while not self._stop_event.is_set():
-            logger.info("💤 Waiting for next round...")
+            logger.debug("💤 Waiting for next round...")
             try:
                 self.run_once()
             except Exception as e:
                 logger.error(f"❌ Error: {e}")
             self._stop_event.wait(self.interval_sec)
-        logger.info("✅ Loop exited cleanly.")
+        logger.debug("✅ Loop exited cleanly.")
     
 class HistoryBackgroundSummarizer:
     def __init__(self, memory_manager, api_key=OPENAI_API_KEY, model=OPENAI_MODEL, interval_sec=60):
@@ -98,15 +98,15 @@ class HistoryBackgroundSummarizer:
         logger.info("🛑 History summarizer stopped.")
 
     def _run_loop(self):
-        logger.info("🔁 Loop started.")
+        logger.debug("🔁 Loop started.")
         while not self._stop_event.is_set():
-            logger.info("💤 Waiting for next round...")
+            logger.debug("💤 Waiting for next round...")
             try:
                 self.run_once()
             except Exception as e:
                 logger.error(f"❌ Error: {e}")
             self._stop_event.wait(self.interval_sec)
-        logger.info("✅ Loop exited cleanly.")
+        logger.debug("✅ Loop exited cleanly.")
 
     def run_once(self):
         logger.debug("Enter HistoryBackgroundSummarizer->run_once")

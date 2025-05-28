@@ -2,18 +2,20 @@
 
 import openai
 import time
+import re
+import json
 import os
 import sys
 import requests
-from entry_map_ha import ENTITY_MAP
+from .entry_map_ha import ENTITY_MAP
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from config import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_TONE, HA_URL, HA_TOKEN
-from chat_manager import ChatManager
-from memory_manager import MemoryManager
-from search_manager import SearchManager
-from background_summarizer import MemoryBackgroundSummarizer, HistoryBackgroundSummarizer
+from .chat_manager import ChatManager
+from .memory_manager import MemoryManager
+from .search_manager import SearchManager
+from .background_summarizer import MemoryBackgroundSummarizer, HistoryBackgroundSummarizer
 
 from logger_config import get_logger
 from latency_logger import LatencyLogger
@@ -39,6 +41,7 @@ class GPTClient:
         self.api_key = OPENAI_API_KEY
         self.model = model
         openai.api_key = self.api_key
+        self.client = openai
 
         self.conversation_active = False
         self.previous_question = None
@@ -82,6 +85,48 @@ class GPTClient:
         for role, summary in reversed(memories):
             context += f"{role.capitalize()}: {summary}\n"
         return context.strip()
+    # เพิ่มใน gpt_integration.py
+    def ask_json(self, prompt: str):
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "คุณคือ AI ที่จะตอบกลับเฉพาะในรูปแบบ JSON เท่านั้น ห้ามใส่คำบรรยาย คำพูด หรือข้อความอื่นใด"
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.2
+            )
+
+            content = response.choices[0].message.content.strip()
+            logger.debug(f"📦 Raw GPT JSON response: {content}")
+
+            # 🔢 Token usage logging
+            if hasattr(response, "usage"):
+                logger.info(
+                    f"📊 Token usage - prompt: {response.usage.prompt_tokens}, "
+                    f"completion: {response.usage.completion_tokens}, total: {response.usage.total_tokens}"
+                )
+
+            # 🔧 Strip markdown wrapper
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\n|\n```$", "", content.strip())
+
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if not json_match:
+                raise ValueError(f"GPT response is not valid JSON:\n{content}")
+
+            cleaned = json_match.group()
+            return json.loads(cleaned)
+
+        except Exception as e:
+            logger.error(f"❌ ask_json failed: {e}")
+            raise
 
     def ask(self, user_voice: str) -> str:
         try:
@@ -117,14 +162,14 @@ class GPTClient:
                 self.tracker.mark("searching web - done")
 
             if need_memory:
-                # logger.info("🧠 Loading memory...")
-                # recent_memories = self.memory_manager.get_recent_memories(limit=5)
-                # memory_text = "\n".join([f"{role.capitalize()}: {summary}" for role, summary in reversed(recent_memories)])
-                # context_parts.append(memory_text)    
-                logger.info("🧠 Summarizing memory...")
-                recent_memories = self.memory_manager.get_recent_memories(limit=10)
-                summary = self.chat_manager.summarize_memories(recent_memories)
-                context_parts.append(f"💭 ความทรงจำล่าสุด:\n{summary}")
+                logger.info("🧠 Loading memory...")
+                recent_memories = self.memory_manager.get_recent_memories(limit=5)
+                memory_text = "\n".join([f"{role.capitalize()}: {summary}" for role, summary in reversed(recent_memories)])
+                context_parts.append(memory_text)    
+                # logger.info("🧠 Summarizing memory...")
+                # recent_memories = self.memory_manager.get_recent_memories(limit=10)
+                # summary = self.chat_manager.summarize_memories(recent_memories)
+                # context_parts.append(f"💭 ความทรงจำล่าสุด:\n{summary}")
                 
             if need_history:
                 # logger.info("🗣️ Loading conversation history...")
@@ -165,3 +210,21 @@ class GPTClient:
         except Exception as e:
             print(f"❌ GPT Error: {e}")
             return "ขอโทษค่ะ เกิดข้อผิดพลาดในการประมวลผลคำถาม"
+
+    def ask_raw(self, prompt: str):
+        try:
+            logger.debug(f"==== ask_raw - gpt response =\n")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "คุณคือ AI ที่ให้คำตอบตรงไปตรงมา"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.4,
+            )
+            content = response.choices[0].message.content.strip()
+            logger.info(f"📝 Raw GPT response: {content}")
+            return content
+        except Exception as e:
+            logger.error(f"❌ ask_raw failed: {e}")
+            raise

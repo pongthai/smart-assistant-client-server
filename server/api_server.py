@@ -2,58 +2,79 @@
 
 from fastapi import FastAPI, File, Request, UploadFile, Form,BackgroundTasks
 from pydantic import BaseModel
-from gpt_integration import GPTClient
+from typing import Union, Dict, Any
+from .gpt_integration import GPTClient
 from voice_profile_manager import VoiceProfileManager
 from fastapi.responses import FileResponse,JSONResponse
-from tts_manager import TTSManager
-from usage_tracker_instance import usage_tracker
+from .tts_manager import TTSManager
+from .usage_tracker_instance import usage_tracker
 from contextlib import asynccontextmanager
 import tempfile
 import shutil
 import os
+import json
+from typing import Union, Dict, Any
+from .intent_classifier.router import router as intent_router
+
+# --- Intent Router Imports for /chat endpoint ---
+from .flow_handlers.intent_router import IntentRouter
+from .intent_classifier.classifier import IntentClassifier
+
+
+from .utils.logger_config import get_logger
+
+logger = get_logger(__name__)
 
 gpt_client = GPTClient()
+
+intent_classifier = IntentClassifier()
+intent_router_instance = IntentRouter(gpt_client=gpt_client, intent_classifier=intent_classifier)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
      # ✅ startup
-    print("🚀 Starting memory summarizer...")
+    logger.info("🚀 Starting memory summarizer...")
     gpt_client.memory_summarizer.start()
 
-    print("🚀 Starting history summarizer...")
+    logger.info("🚀 Starting history summarizer...")
     gpt_client.history_summarizer.start()
 
     yield
 
     # ✅ shutdown
-    print("🛑 Stopping memory summarizer...")
+    logger.info("🛑 Stopping memory summarizer...")
     gpt_client.memory_summarizer.stop()
 
-    print("🛑 Stopping history summarizer...")
+    logger.info("🛑 Stopping history summarizer...")
     gpt_client.history_summarizer.stop()
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(intent_router, prefix="/nlp", tags=["Intent Detection"])
 
 vpm = VoiceProfileManager()
 tts_manager = TTSManager()
 
 class ChatRequest(BaseModel):
     user_voice: str
-
-class ChatResponse(BaseModel):
-    response: str
+ 
+class ChatResponse(BaseModel):    
+    response: Union[str, Dict[str, Any]]
 
 def cleanup_file(path: str):
     if os.path.exists(path):
         try:
             os.remove(path)
-            print(f"🧹 Deleted: {path}")
+            logger.info(f"🧹 Deleted: {path}")
         except Exception as e:
-            print(f"⚠️ Failed to delete file: {e}")
+            logger.info(f"⚠️ Failed to delete file: {e}")
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    reply = gpt_client.ask(user_voice=request.user_voice)
-    return ChatResponse(response=reply)
+    result = intent_router_instance.route(request.user_voice)
+    logger.info(f"🗣️ User said: {request.user_voice}")
+    logger.info(f"🤖 Assistant responded: {result}")
+    return ChatResponse(response=result)
 
 @app.post("/speak")
 async def speak(req: Request, background_tasks: BackgroundTasks):

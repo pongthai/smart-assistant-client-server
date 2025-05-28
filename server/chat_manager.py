@@ -8,8 +8,8 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 from config import OPENAI_API_KEY, OPENAI_MODEL
-from entry_map_ha import control_device_function, domain_field_schema, action_field_schema, attribute_field_schema
-from usage_tracker_instance import usage_tracker
+from .entry_map_ha import control_device_function, domain_field_schema, action_field_schema, attribute_field_schema
+from .usage_tracker_instance import usage_tracker
  
 from logger_config import get_logger
 

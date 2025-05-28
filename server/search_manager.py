@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
 
-from search_to_context_builder import SearchToContextBuilder
+from .search_to_context_builder import SearchToContextBuilder
 
 logger = get_logger(__name__)
 
