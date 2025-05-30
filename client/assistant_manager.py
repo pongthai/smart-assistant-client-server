@@ -19,7 +19,6 @@ from gpt_client_proxy import GPTProxyClient
 from command_detector import CommandDetector
 from reminder_manager import ReminderManager
 from logger_config import get_logger
-from home_assistant_bridge import transform_command_for_ha, send_command_to_ha
 
 
 logger = get_logger(__name__)
@@ -143,7 +142,9 @@ class AssistantManager:
                 action = response.get("action")
                 action_type = action.get("type") if isinstance(action, dict) else None
                 status = response.get("status",None)
-                message = response.get("reply", None)   
+                message = response.get("reply", None)
+                if (message == None):
+                    message = response.get("message",None)
                 logger.debug(f" action_type: {action_type} ,  message: {message}, status: {status}")  
 
                 if action_type == "home_assistant_command" or action_type == "reminder":     

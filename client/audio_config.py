@@ -1,18 +1,29 @@
-# audio_config.py
-import platform
+# client/audio_config.py
+
 import sounddevice as sd
 
-def configure_audio_device():
-    system_name = platform.system()
-    node_name = platform.node()
+def find_device_id(name_keyword: str, is_input=False, is_output=False):
+    devices = sd.query_devices()
+    for idx, dev in enumerate(devices):
+        if name_keyword.lower() in dev['name'].lower():
+            if is_input and dev['max_input_channels'] > 0:
+                return idx
+            if is_output and dev['max_output_channels'] > 0:
+                return idx
+    return None
 
-    if system_name == "Linux":
-        sd.default.device = (1, 2)  # input, output for Raspberry Pi
-    elif system_name == "Darwin":
-        sd.default.device = (3, 2)  # input, output for Mac
-    else:
-        print("⚠️ Unknown system. Please configure audio device manually.")
+# ???????? keyword ????????????????????
+MIC_KEYWORD = "USB Audio"
+SPEAKER_KEYWORD = "USB Audio"
 
-# Apply at import
-configure_audio_device()
+mic_id = find_device_id(MIC_KEYWORD, is_input=True)
+speaker_id = find_device_id(SPEAKER_KEYWORD, is_output=True)
+
+if mic_id is None or speaker_id is None:
+    raise RuntimeError("? ?????????????????????? ????????????????????????")
+
+# ??????? default
+sd.default.device = (mic_id, speaker_id)
+
+print(f"? Audio devices set: mic_id={mic_id}, speaker_id={speaker_id}")
 
