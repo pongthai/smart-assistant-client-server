@@ -24,7 +24,6 @@ class AssistantAvatarPygame:
 
             # ปรับขนาด
             self.static_img = pygame.transform.smoothscale(self.static_img, new_size)
-
         
         pygame.display.set_caption("PingPing Avatar")
 

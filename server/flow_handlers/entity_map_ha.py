@@ -55,6 +55,12 @@ ACTION_KEYWORDS = {
     "increase": ["เพิ่ม", "เร่ง"],
     "decrease": ["ลด"]
 }
+# สร้าง reverse mapping จาก action_en → คำไทย
+def get_action_th(ai_action):
+    for en_action, th_keywords in ACTION_KEYWORDS.items():
+        if en_action == ai_action and th_keywords:
+            return th_keywords[0]  # ใช้คำแรกเป็นตัวแทน
+    return ai_action  # fallback ถ้าไม่พบ
 
 def parse_command_to_ha_json(text):
     text = text.lower().strip()

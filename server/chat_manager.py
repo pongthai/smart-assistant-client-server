@@ -1,5 +1,3 @@
-# assistant/chat_manager.py (refactored with structured context awareness)
-
 import re
 import json
 from datetime import datetime, timedelta
@@ -142,13 +140,22 @@ class ChatManager:
 
         reply = response.choices[0].message.content.strip()
         self.update_session(question, gpt_model, reply)
-        return False, reply
+        return reply
 
     def ask_simple(self, prompt: str) -> str:
         try:
             response = self.client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}]
+            )
+            usage = response.usage
+            logger.info(f"Input tokens:{usage.prompt_tokens}")
+            logger.info(f"Output tokens:{usage.completion_tokens}")
+            logger.info(f"Total tokens :{usage.total_tokens}")
+
+            usage_tracker.log_gpt_usage(
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
@@ -194,3 +201,48 @@ class ChatManager:
         content = response.choices[0].message.content.strip()
         cleaned_content = re.sub(r"```(?:json)?\n([\s\S]*?)\n```", r"\1", content.strip())
         return json.loads(cleaned_content)
+    def ask_json_only(self, prompt: str) -> dict:
+        response = self.client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "คุณคือ AI ที่จะตอบกลับเฉพาะในรูปแบบ JSON เท่านั้น ห้ามใส่คำบรรยาย คำพูด หรือข้อความอื่นใด"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+        )
+        usage = response.usage
+        logger.info(f"Input tokens:{usage.prompt_tokens}")
+        logger.info(f"Output tokens:{usage.completion_tokens}")
+        logger.info(f"Total tokens :{usage.total_tokens}")
+
+        usage_tracker.log_gpt_usage(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\n|\n```$", "", content.strip())
+        json_match = re.search(r"\{.*\}", content, re.DOTALL)
+        if not json_match:
+            raise ValueError(f"GPT response is not valid JSON:\n{content}")
+        return json.loads(json_match.group())
+
+    def ask_plain_response(self, prompt: str) -> str:
+        response = self.client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "คุณคือ AI ที่ให้คำตอบตรงไปตรงมา"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4,
+        )
+        usage = response.usage
+        logger.info(f"Input tokens:{usage.prompt_tokens}")
+        logger.info(f"Output tokens:{usage.completion_tokens}")
+        logger.info(f"Total tokens :{usage.total_tokens}")
+
+        usage_tracker.log_gpt_usage(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens
+        )
+        return response.choices[0].message.content.strip()

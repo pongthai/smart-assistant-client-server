@@ -9,9 +9,10 @@ logger = get_logger(__name__)
 
 
 class BaseIntentHandler(ABC):
-    def __init__(self, session_id: str):
-        self.session_id = session_id
-        self.context: Dict[str, Any] = {}
+    def __init__(self, session):
+        self.session = session
+        self.session_id = session.user_id
+        self.context = session.context
 
             
     @abstractmethod

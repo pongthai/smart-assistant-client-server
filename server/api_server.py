@@ -1,5 +1,3 @@
-#to run "uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload"
-
 from fastapi import FastAPI, File, Request, UploadFile, Form,BackgroundTasks
 from pydantic import BaseModel
 from typing import Union, Dict, Any
@@ -19,9 +17,10 @@ from .intent_classifier.router import router as intent_router
 # --- Intent Router Imports for /chat endpoint ---
 from .flow_handlers.intent_router import IntentRouter
 from .intent_classifier.classifier import IntentClassifier
+from .session_manager import session_manager
 
 
-from .utils.logger_config import get_logger
+from logger_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -56,6 +55,7 @@ vpm = VoiceProfileManager()
 tts_manager = TTSManager()
 
 class ChatRequest(BaseModel):
+    session_id: str
     user_voice: str
  
 class ChatResponse(BaseModel):    
@@ -70,9 +70,20 @@ def cleanup_file(path: str):
             logger.info(f"⚠️ Failed to delete file: {e}")
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    result = intent_router_instance.route(request.user_voice)
-    logger.info(f"🗣️ User said: {request.user_voice}")
+async def chat(chat_input: ChatRequest):
+    session_id = chat_input.session_id    
+    session = session_manager.get_session(session_id)
+
+    state_info = session_manager.get_state_info(session_id)
+    logger.debug(f"session_id = {session_id} : state = {state_info.get('state')}")
+    if state_info and state_info.get("state") and state_info.get("state") != "complete":
+        result = intent_router_instance.route_by_state(state_info["state"], chat_input.user_voice, session)
+    else:
+        result = intent_router_instance.route(chat_input.user_voice, session)
+
+    session_manager.update_session(session_id, intent=session.intent, state=session.state, context_update=session.context)
+
+    logger.info(f"🗣️ User said: {chat_input.user_voice}")
     logger.info(f"🤖 Assistant responded: {result}")
     return ChatResponse(response=result)
 

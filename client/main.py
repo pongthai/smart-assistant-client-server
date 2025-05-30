@@ -5,6 +5,7 @@ import traceback
 import threading
 import sys
 from assistant_manager import AssistantManager
+import time
 
 
 def dump_threads(signum, frame):

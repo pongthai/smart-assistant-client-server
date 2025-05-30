@@ -88,42 +88,8 @@ class GPTClient:
     # เพิ่มใน gpt_integration.py
     def ask_json(self, prompt: str):
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "คุณคือ AI ที่จะตอบกลับเฉพาะในรูปแบบ JSON เท่านั้น ห้ามใส่คำบรรยาย คำพูด หรือข้อความอื่นใด"
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.2
-            )
-
-            content = response.choices[0].message.content.strip()
-            logger.debug(f"📦 Raw GPT JSON response: {content}")
-
-            # 🔢 Token usage logging
-            if hasattr(response, "usage"):
-                logger.info(
-                    f"📊 Token usage - prompt: {response.usage.prompt_tokens}, "
-                    f"completion: {response.usage.completion_tokens}, total: {response.usage.total_tokens}"
-                )
-
-            # 🔧 Strip markdown wrapper
-            if content.startswith("```"):
-                content = re.sub(r"^```(?:json)?\n|\n```$", "", content.strip())
-
-            json_match = re.search(r"\{.*\}", content, re.DOTALL)
-            if not json_match:
-                raise ValueError(f"GPT response is not valid JSON:\n{content}")
-
-            cleaned = json_match.group()
-            return json.loads(cleaned)
-
+            result = self.chat_manager.ask_json_only(prompt)
+            return result
         except Exception as e:
             logger.error(f"❌ ask_json failed: {e}")
             raise
@@ -192,17 +158,15 @@ class GPTClient:
 
             self.tracker.mark("asking chatGPT - start")
             logger.info("Asking ChatGPT...")
-            is_command, answer = self.chat_manager.ask_gpt_with_context(user_voice, context=full_context)
+            answer = self.chat_manager.ask_gpt_with_context(user_voice, context=full_context)
             logger.info("ChatGPT: %s", answer)
             self.tracker.mark("asking chatGPT - done")
             self.last_interaction_time = time.time()
 
-            if not is_command:
-                self.memory_manager.add_message("user", user_voice)
-                self.memory_manager.add_message("assistant", answer)
-            else:
-                answer = self.call_ha_service_from_function_call(answer["data"])
+            self.memory_manager.add_message("user", user_voice)
+            self.memory_manager.add_message("assistant", answer)
 
+   
             self.tracker.report()
             self.previous_question = user_voice
             return answer
@@ -213,18 +177,8 @@ class GPTClient:
 
     def ask_raw(self, prompt: str):
         try:
-            logger.debug(f"==== ask_raw - gpt response =\n")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "คุณคือ AI ที่ให้คำตอบตรงไปตรงมา"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.4,
-            )
-            content = response.choices[0].message.content.strip()
-            logger.info(f"📝 Raw GPT response: {content}")
-            return content
+            result = self.chat_manager.ask_plain_response(prompt)
+            return result
         except Exception as e:
             logger.error(f"❌ ask_raw failed: {e}")
             raise

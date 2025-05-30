@@ -14,7 +14,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config import IDLE_TIMEOUT, HELLO_MSG
 from audio_controller import AudioController
 from voice_listener import VoiceListener
-from command_handler import CommandHandler
 from latency_logger import LatencyLogger
 from gpt_client_proxy import GPTProxyClient
 from command_detector import CommandDetector
@@ -28,7 +27,7 @@ logger = get_logger(__name__)
 class AssistantState(Enum):
     IDLE = 0
     LISTENING = 1
-    CONFIRMING_COMMAND = 2
+    CONFIRMING = 2
     RESPONDING = 3
 
 class AssistantManager:
@@ -41,12 +40,10 @@ class AssistantManager:
         self.wake_word_detected = threading.Event()
         self.should_exit = False
         self.last_interaction_time = time.time()
-        self.confirmation_pending_command = None
         self.conversation_active = False
 
         self.audio_controller = AudioController(self)
         self.voice_listener = VoiceListener(self.audio_controller, self.wake_word_detected)
-        self.command_handler = CommandHandler()
         self.gpt_client_proxy = GPTProxyClient()
         self.command_detector = CommandDetector()
         self.reminder_manager = ReminderManager(self.audio_controller)
@@ -137,58 +134,53 @@ class AssistantManager:
                 logger.info(f"🗣️ User said: {user_voice}")
                 self.last_interaction_time = time.time()
 
-                command = self.command_detector.detect_command(user_voice)
-                logger.debug(f"command_detector returns = {command}")
-                if command:
-                    if command['type'] == "home_assistant_command":
-                        self.confirmation_pending_command = command
-                        summarize_command = self.command_detector.summarize_command(command)
-                        self.audio_controller.speak(self.text_to_ssml(summarize_command), is_ssml=True)                        
-                        self.set_state(AssistantState.CONFIRMING_COMMAND)
-                        continue
-                    elif command['type'] == "reminder":
-                        self.reminder_manager.add_reminder(command)
-                        self.audio_controller.speak(self.text_to_ssml(text="บันทึกการแจ้งเตือนให้แล้ว"), is_ssml=True)
-                        self.set_state(AssistantState.LISTENING)
-                        continue
-                    # else:
-                    #     self.audio_controller.speak(self.text_to_ssml("ไม่พบข้อมูลอุปกรณ์ "), is_ssml=True)
-                    #     self.set_state(AssistantState.LISTENING)
-                    #     continue
-
                 self.start_processing_loop()
-                logger.info(f"[ChatGPT] Sending text..")
-                answer = self.gpt_client_proxy.ask(user_voice)
-                logger.info(f"[ChatGPT] Response text: {answer}")
+                response = self.gpt_client_proxy.ask(user_voice)
+                logger.info(f"[ChatGPT] Response received: {response}")
                 self.stop_processing_loop()
 
-                if not re.search(r"<speak>.*</speak>", answer, re.DOTALL):
-                    answer = self.text_to_ssml(answer)
+                
+                action = response.get("action")
+                action_type = action.get("type") if isinstance(action, dict) else None
+                status = response.get("status",None)
+                message = response.get("reply", None)   
+                logger.debug(f" action_type: {action_type} ,  message: {message}, status: {status}")  
 
-                self.audio_controller.speak(answer, is_ssml=True)
-                self.set_state(AssistantState.LISTENING)
+                if action_type == "home_assistant_command" or action_type == "reminder":     
+                    logger.debug("Enter command for Home Assistant and Creating reminder")             
+                    self.audio_controller.speak(self.text_to_ssml(message), is_ssml=True)                
+                    self.set_state(AssistantState.CONFIRMING)
+                    continue               
+                else:
+                    if not re.search(r"<speak>.*</speak>", message, re.DOTALL):
+                        message = self.text_to_ssml(message)
+                    
+                    self.audio_controller.speak(message, is_ssml=True)
+                    self.set_state(AssistantState.LISTENING)
+                    continue
+            
 
-            elif self.state == AssistantState.CONFIRMING_COMMAND:
+            elif self.state == AssistantState.CONFIRMING:
                 self.voice_listener.background_enabled = False
                 with self.voice_listener.listening_lock:
-                    user_response = self.voice_listener.listen( skip_if_speaking=False,keywords_only=True,silence_timeout=300,post_padding_seconds=0.1)
-                    print(f"user_response={user_response}")
+                    user_voice = self.voice_listener.listen()
                 self.voice_listener.background_enabled = True
-
-                if self.command_detector.is_confirmation(user_response):
-                    self.command_handler.execute_command(self.confirmation_pending_command)                    
-                    logger.info(f"executing command : {self.confirmation_pending_command}")
-                    self.audio_controller.speak(self.text_to_ssml("ดำเนินการเรียบร้อยแล้ว"), is_ssml=True)
-                    self.confirmation_pending_command = None
+                if not user_voice:
                     self.set_state(AssistantState.LISTENING)
-                elif self.command_detector.is_cancellation(user_response):
-                    self.audio_controller.speak(self.text_to_ssml("ยกเลิกคำสั่งแล้ว"), is_ssml=True)
-                    self.confirmation_pending_command = None
-                    self.set_state(AssistantState.LISTENING)
-                else:
-                    self.audio_controller.speak(self.text_to_ssml("ช่วยยืนยันหน่อยนะว่า ใช่ หรือ ไม่"), is_ssml=True)
+                    continue
 
-                
-                
+                logger.info(f"🗣️ User said (confirmation): {user_voice}")
+                self.last_interaction_time = time.time()
+
+                response = self.gpt_client_proxy.ask(user_voice)
+                logger.info(f"[ChatGPT] Response received: {response}")
+
+                status = response.get("status",None)
+                message = response.get("reply", None)  
+         
+                self.audio_controller.speak(self.text_to_ssml(message), is_ssml=True)
+                if status == "confirmed" or status == "cancelled":
+                    self.set_state(AssistantState.LISTENING)                            
+               
 
         logger.info("👋 Program exiting... Goodbye!")

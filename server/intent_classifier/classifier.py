@@ -35,25 +35,90 @@ class IntentClassifier:
             return {"intent": "unknown", "confidence": 0.0}
 
     def _build_prompt(self, user_input: str) -> str:
-        intent_lines = []
-        for intent, meta in self.intent_definitions.items():
-            desc = meta["description"]
-            examples = "\n".join(f"- {ex}" for ex in meta["examples"])
-            intent_lines.append(f"{intent}:\n  ความหมาย: {desc}\n  ตัวอย่าง:\n{examples}")
-        intents_description = "\n\n".join(intent_lines)
+        return f"""
+            คุณคือ AI ที่ทำหน้าที่วิเคราะห์ข้อความของผู้ใช้ แล้วระบุ "intent" ที่ตรงที่สุดเพียงหนึ่งรายการจากรายการด้านล่าง พร้อมระบุระดับความมั่นใจ (0-1) และคำอธิบายประกอบ
 
-        return (
-            f"ต่อไปนี้คือคำอธิบาย intent ต่าง ๆ ที่ระบบรู้จัก:\n\n"
-            f"{intents_description}\n\n"
-            f"ตอนนี้มีข้อความจากผู้ใช้ดังนี้:\n\"{user_input}\"\n"
-            f"โปรดระบุ intent ที่ตรงที่สุด พร้อมระดับความมั่นใจ (0-1) และคำอธิบายเหตุผล\n"
-            f"ตอบกลับในรูปแบบ JSON เช่น: "
-            f"{{\"intent\": \"command\", \"confidence\": 0.92, \"explanation\": \"ผู้ใช้มีเจตนาสั่งเปิดอุปกรณ์\"}}"
-        )
+            รายการ intent ที่รองรับมีดังนี้:
+
+            - general_chat:
+            ความหมาย: การพูดคุยทั่วไป ไม่ได้ขอข้อมูลหรือสั่งงาน
+            ตัวอย่าง:
+                - สบายดีไหม
+                - วันนี้อากาศดีจัง
+                - เล่าเรื่องสนุก ๆ ให้ฟังหน่อย
+                - How are you?
+
+            - home_command:
+            ความหมาย: คำสั่งควบคุมอุปกรณ์ในบ้าน เช่น ไฟ แอร์ ประตู
+            ตัวอย่าง:
+                - เปิดไฟห้องนั่งเล่น
+                - ปิดแอร์ตอนตีหนึ่ง
+                - เปิดม่าน
+                - Turn off the bedroom light
+
+            - reminder:
+            ความหมาย: ขอให้สร้าง ลบ หรือแจ้งเตือนสิ่งใดสิ่งหนึ่ง
+            ตัวอย่าง:
+                - เตือนฉันให้กินยา 2 ทุ่ม
+                - ลบการเตือนเมื่อวาน
+                - ตั้งเตือนตอน 9 โมงให้โทรหาหมอ
+                - Remind me to take my meds at 8PM
+
+            - news_summary:
+            ความหมาย: ขอให้สรุปข่าวล่าสุด หรือข่าวเฉพาะหมวด เช่น เทคโนโลยี พลังงาน
+            ตัวอย่าง:
+                - ช่วยสรุปข่าวเทคโนโลยีล่าสุดวันนี้
+                - ข่าว AI มีอะไรใหม่
+                - Trending news in Thailand
+                - ข่าวที่เกี่ยวกับพลังงานสะอาดมีอะไรบ้าง
+
+            - stock_analysis:
+            ความหมาย: ขอวิเคราะห์แนวโน้มหรือสถานการณ์ของหุ้นตัวใดตัวหนึ่ง
+            ตัวอย่าง:
+                - วิเคราะห์หุ้น BBL หน่อย
+                - หุ้นพลังงานน่าเข้าตอนนี้มั้ย
+                - ADVANC มีแนวโน้มยังไง
+
+            - weather:
+            ความหมาย: ถามพยากรณ์อากาศ
+            ตัวอย่าง:
+                - หัวหินพรุ่งนี้ฝนตกไหม
+                - วันนี้ที่กรุงเทพอากาศกี่องศา
+                - Will it rain tomorrow?
+
+            - daily_briefing:
+            ความหมาย: ขอรายงานสรุปประจำวัน
+            ตัวอย่าง:
+                - แจ้งเตือนวันนี้มีอะไรบ้าง
+                - สรุปข่าว หุ้น และกิจกรรมให้หน่อยตอนเช้า
+                - Today’s daily briefing please
+
+            - unknown:
+            ความหมาย: ข้อความไม่สามารถระบุเจตนาได้แน่ชัด
+
+            โปรดวิเคราะห์ข้อความผู้ใช้ต่อไปนี้:
+            \"{user_input}\"
+
+            และตอบกลับในรูปแบบ JSON ที่ถูกต้อง เช่น:
+            {{
+            "intent": "reminder",
+            "confidence": 0.88,
+            "explanation": "ผู้ใช้ขอให้ช่วยเตือนเรื่องสำคัญ ซึ่งตรงกับเจตนา reminder"
+            }}
+            """
 
     def _parse_result(self, result_str: str):
         try:
             import json
-            return json.loads(result_str)
-        except Exception:
+            cleaned = result_str.strip()
+
+            # Remove triple backticks if present
+            if cleaned.startswith("```json"):
+                cleaned = cleaned.removeprefix("```json").removesuffix("```").strip()
+            elif cleaned.startswith("```"):
+                cleaned = cleaned.removeprefix("```").removesuffix("```").strip()
+
+            return json.loads(cleaned)
+        except Exception as e:
+            logger.error(f"[classify_intent] ❌ Failed to parse JSON result: {e}")
             return {"intent": "unknown", "confidence": 0.0}

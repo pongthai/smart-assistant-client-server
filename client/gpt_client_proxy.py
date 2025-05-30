@@ -6,7 +6,7 @@ import sys
 import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from config import GPT_SERVER_ENDPOINT
+from config import GPT_SERVER_ENDPOINT, SESSION_ID
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,10 @@ class GPTProxyClient:
         self.server_url = server_url
 
     def ask(self, user_text: str) -> str:
-        payload = {"user_voice": user_text}
+        payload = {
+            "user_voice": user_text,
+            "session_id": SESSION_ID
+        }
         try:
             response = requests.post(self.server_url, json=payload, timeout=30)
             response.raise_for_status()
@@ -30,4 +33,3 @@ class GPTProxyClient:
         except Exception as e:
             logger.exception("❌ Unexpected error while contacting GPT server")
             return "❌ เกิดข้อผิดพลาดภายในระบบ"
-            

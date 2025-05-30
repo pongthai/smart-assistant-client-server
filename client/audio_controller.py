@@ -10,7 +10,7 @@ import time
 
 from avatar_display import AssistantAvatarPygame
 
-from config import TEMP_AUDIO_PATH, TTS_SERVER_ENDPOINT, SAMPLE_RATE, AVATAR_SCALE, AVATAR_STATIC, AVATAR_ANIMATION
+from config import TEMP_AUDIO_PATH, TTS_SERVER_ENDPOINT, SAMPLE_RATE, AVATAR_SCALE, AVATAR_STATIC, AVATAR_ANIMATION, ENABLE_AVATAR_DISPLAY
 from logger_config import get_logger
 
 sd.default.device = (0, 0)
@@ -23,8 +23,19 @@ class AudioController:
         self.assistant_manager = assistant_manager
         self.current_audio_file = None
         self.is_sound_playing = False
-        self.stop_flag = threading.Event()
-        self.avatar = AssistantAvatarPygame(AVATAR_STATIC, AVATAR_ANIMATION, scale=AVATAR_SCALE)
+        self.stop_flag = threading.Event()        
+        try:
+            if ENABLE_AVATAR_DISPLAY:
+                self.avatar = AssistantAvatarPygame(
+                    AVATAR_STATIC,
+                    AVATAR_ANIMATION,
+                    scale=AVATAR_SCALE
+                )
+            else:
+                self.avatar = None
+        except Exception as e:
+            logger.error(f"Failed to initialize avatar: {e}")
+            self.avatar = None  # Ensure avatar is set to None if initialization fails
 
     def cleanup_audio_file(self,file_path):
         def worker():
@@ -114,6 +125,7 @@ class AudioController:
         """
         ติดต่อ TTS server และเล่นเสียงจากข้อความ
         """
+        logger.debug(f"[TTS INPUT] {text} | is_ssml={is_ssml}")
         self.stop_audio()
 
         try:
@@ -123,10 +135,14 @@ class AudioController:
                 timeout=15
             )
             response.raise_for_status()
+            logger.debug(f"[TTS RESPONSE] - Type = {response.headers.get('Content-Type')}")
             if response.headers.get("Content-Type") == "audio/mpeg":
                 self.save_and_play(response.content)
             else:
                 logger.error(f"❌ Invalid TTS content-type: {response.headers.get('Content-Type')}")
+                logger.error(f"❌ TTS response content: {response.text}")
+                 
+
         except Exception as e:
             logger.error(f"❌ Failed to fetch TTS audio: {e}")
 

@@ -18,13 +18,14 @@ from pygame import transform
 import sounddevice as sd
 import soundfile as sf
 import resampy
+import audio_config
 
 from logger_config import get_logger
 
 logger = get_logger(__name__)
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CLOUD_CREDENTIALS_PATH
 
-sd.default.device = (1,2)
+
 
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 os.environ["AUDIODEV"] = "plughw:2,0"  # ??????????????? hw:0,0 ?????? HDMI

@@ -1,6 +1,7 @@
 
 import re
 from datetime import datetime, timedelta
+from typing import Optional
 
 # แปลงเลขไทยและเลขคำเป็นเลขอารบิก
 THAI_NUM_TEXT = {
@@ -40,8 +41,9 @@ def extract_time_digit(text):
         return hour, minute
     return None
 
-def extract_time_expression(text: str) -> str | None:
-    text = replace_thai_numbers(text)  # ทำให้ "บ่ายสอง" → "บ่าย2"
+def extract_time_expression(text: str) -> Optional[str]:
+    text = replace_thai_numbers(text)  # Assumes this function is defined elsewhere
+
     time_patterns = [
         r"ตี\s*\d+(ครึ่ง)?",
         r"บ่าย\s*\d+(ครึ่ง)?",
@@ -52,10 +54,15 @@ def extract_time_expression(text: str) -> str | None:
         r"ตอน\s*บ่าย", r"ตอน\s*เย็น"
     ]
 
-    for pattern in time_patterns:
-        match = re.search(pattern, text)
+    # Compile the regex patterns for improved performance
+    compiled_patterns = [re.compile(pattern) for pattern in time_patterns]
+
+    for pattern in compiled_patterns:
+        match = pattern.search(text)
         if match:
+            # Return matched group with spaces removed, if found
             return match.group().replace(" ", "")
+    
     return None
 
 def parse_thai_time(text: str) -> datetime:

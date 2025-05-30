@@ -19,7 +19,6 @@ dependecies
 server/__pycache__/
 server/chat_manager.py.bak
 server/gctts_key.json
-server/intent_classifier/
 server/memory.db
 server/memory.db.bak
 server/usage_log.jsonl
@@ -27,5 +26,5 @@ server/voice_profiles/
 system-prompt.txt
 usage_log.jsonl
 test/
-
+usage_log.json
 

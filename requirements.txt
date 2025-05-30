@@ -29,3 +29,6 @@ slugify
 dateparser
 langdetect
 deep_translator
+dateparser
+slugify
+feedparser

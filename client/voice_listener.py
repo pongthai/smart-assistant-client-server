@@ -12,6 +12,8 @@ import datetime
 import wave
 import os
 import soundfile as sf
+import platform
+import audio_config
 
 from logger_config import get_logger
 
@@ -25,7 +27,9 @@ MAX_RECORD_SECONDS = 15
 VOICE_DEBOUNCE_FRAMES = 2
 MARGIN_DB = 10
 
-sd.default.device = (0, 0)
+#sd.default.device = (0, 0)
+
+    
 
 class VoiceListener:
     def __init__(self, audio_controller, wake_word_event):
@@ -61,7 +65,7 @@ class VoiceListener:
         logger.info(f"Ambient noise: {ambient_db:.1f} dB, threshold: {self.volume_threshold_db:.1f} dB")
 
     def _background_listener(self):
-        self.calibrate_ambient_noise()
+        self.calibrate_ambient_noise()        
         
         while not self._stop_event.is_set():
             if not self.background_enabled:

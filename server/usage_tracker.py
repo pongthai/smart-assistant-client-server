@@ -3,9 +3,12 @@ from collections import defaultdict
 import json
 import os
 from config import OPENAI_MODEL
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 class UsageTracker:
-    def __init__(self, log_file="usage_log.jsonl"):
+    def __init__(self, log_file="usage_log.json"):
         self.log_file = log_file
 
     def log_gpt_usage(self, prompt_tokens, completion_tokens, model=OPENAI_MODEL):
@@ -29,6 +32,7 @@ class UsageTracker:
         entry["timestamp"] = datetime.now().isoformat()
         with open(self.log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
+        logger.debug(f"📊 GPT Usage Logged: {entry}")
 
     def summarize(self, by="day"):
         if not os.path.exists(self.log_file):
